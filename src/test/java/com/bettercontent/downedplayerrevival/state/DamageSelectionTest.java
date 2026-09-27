@@ -30,6 +30,8 @@ class DamageSelectionTest {
         assertEquals(MaimType.OPENED, DamageSelection.selectType("custom:shot", Set.of(), true, false, Map.of()));
         assertEquals(MaimType.OPENED, DamageSelection.selectType("custom:sword", Set.of(), false, true, Map.of()));
         assertEquals(MaimType.CRACKED, DamageSelection.selectType("custom:unknown", Set.of(), false, false, Map.of()));
+        assertEquals(MaimType.LOW_OXYGEN, DamageSelection.selectType("minecraft:drown", Set.of(), false, false, Map.of()));
+        assertEquals(MaimType.LOW_OXYGEN, DamageSelection.selectType("custom:asphyxia", Set.of("low_oxygen"), false, false, Map.of()));
         assertEquals(MaimType.OPENED, DamageSelection.selectType("custom:heat", Set.of("fire"), false, false, Map.of("custom:heat", MaimType.OPENED)));
     }
 }

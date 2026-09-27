@@ -66,6 +66,8 @@ public final class DamageSelection {
                                      Map<String, MaimType> overrides) {
         MaimType override = overrides.get(damageId);
         if (override != null) return override;
+        if (damageId.equals("minecraft:drown") || damageId.equals("adpother:low_oxygen")
+            || tags.contains("low_oxygen")) return MaimType.LOW_OXYGEN;
         if (tags.contains("burnt") || tags.contains("fire") || tags.contains("heat") || tags.contains("acid")
             || tags.contains("corrosion") || tags.contains("freezing") || tags.contains("friction")) return MaimType.BURNT;
         if (tags.contains("cracked") || tags.contains("blunt") || tags.contains("crushing") || tags.contains("fall")) return MaimType.CRACKED;

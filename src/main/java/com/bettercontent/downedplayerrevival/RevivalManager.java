@@ -168,7 +168,7 @@ public final class RevivalManager {
         if (source.is(DamageTypeTags.IS_FIRE)) tags.add("fire");
         if (source.is(DamageTypeTags.IS_FREEZING)) tags.add("freezing");
         if (source.is(DamageTypeTags.IS_FALL)) tags.add("fall");
-        for (String tag : List.of("burnt", "cracked", "opened", "heat", "acid", "corrosion", "freezing", "friction", "blunt", "crushing", "piercing", "cutting", "tear")) {
+        for (String tag : List.of("burnt", "cracked", "opened", "low_oxygen", "heat", "acid", "corrosion", "freezing", "friction", "blunt", "crushing", "piercing", "cutting", "tear")) {
             if (source.is(TagKey.create(Registries.DAMAGE_TYPE, new ResourceLocation(RevivalMod.MOD_ID, tag)))) tags.add(tag);
         }
         ItemStack held = source.getEntity() instanceof LivingEntity living ? living.getMainHandItem() : ItemStack.EMPTY;

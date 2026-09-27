@@ -28,8 +28,8 @@ public final class RevivalConfig {
         TREATMENT_BASE = b.defineInRange("treatmentBaseSeconds", 2., .05, 120);
         TREATMENT_ARM = b.defineInRange("treatmentAddedSecondsPerArmMaim", 8. / 3., 0, 120);
         INTERACTION_DISTANCE = b.defineInRange("treatmentDistance", 3., .1, 8);
-        TYPE_OVERRIDES = b.comment("Damage registry ID=CRACKED|BURNT|OPENED. Overrides precede damage/weapon tags.")
-            .defineListAllowEmpty("damageTypeOverrides", List.of(), value -> value instanceof String s && s.matches("[a-z0-9_.-]+:[a-z0-9_./-]+=(CRACKED|BURNT|OPENED)"));
+        TYPE_OVERRIDES = b.comment("Damage registry ID=CRACKED|BURNT|OPENED|LOW_OXYGEN. Overrides precede damage/weapon tags.")
+            .defineListAllowEmpty("damageTypeOverrides", List.of(), value -> value instanceof String s && s.matches("[a-z0-9_.-]+:[a-z0-9_./-]+=(CRACKED|BURNT|OPENED|LOW_OXYGEN)"));
         BYPASS_TYPES = b.comment("Registry IDs or existing explicit special-kill message IDs; bypass borrowed time.")
             .defineListAllowEmpty("bypassDamageTypes", List.of("gorgon", "sgcraft:transient", "sgcraft:iris", "vampirism_dbno", "hordes:infection", "minecraft:generic_kill", "minecraft:out_of_world"), value -> value instanceof String s && !s.isBlank());
         b.pop(); SPEC = b.build();
