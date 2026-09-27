@@ -1,34 +1,36 @@
 package com.bettercontent.downedplayerrevival.network;
+
 import com.bettercontent.downedplayerrevival.RevivalManager;
-import com.bettercontent.downedplayerrevival.state.*;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraftforge.network.NetworkEvent;
-import java.util.*;
+import java.util.UUID;
 import java.util.function.Supplier;
-public record BodyActionPacket(UUID subject,int action,int region,int type,int page,boolean history) {
- public static final int INSPECT=0, START_TREATMENT=1, CLOSE=2, OPEN_OVERVIEW=3, PROMOTE_REGION=4;
- public static BodyActionPacket overview(UUID subject){return new BodyActionPacket(subject,OPEN_OVERVIEW,0,0,0,false);}
- /** Reject malformed client input before it can reach any server state mutation. */
- public boolean validShape() {
-  if (subject == null || action < INSPECT || action > PROMOTE_REGION) return false;
-  return switch (action) {
-   case INSPECT -> region >= 0 && region < Region.values().length && type >= 0 && type < MaimType.values().length && page >= 0;
-   case START_TREATMENT, CLOSE, OPEN_OVERVIEW -> region == 0 && type == 0 && page == 0 && !history;
-   case PROMOTE_REGION -> region >= 0 && region < Region.values().length && type == 0 && page == 0 && !history;
-   default -> false;
-  };
- }
- public static void encode(BodyActionPacket p,FriendlyByteBuf b){b.writeUUID(p.subject);b.writeVarInt(p.action);b.writeVarInt(p.region);b.writeVarInt(p.type);b.writeVarInt(p.page);b.writeBoolean(p.history);}
- public static BodyActionPacket decode(FriendlyByteBuf b){return new BodyActionPacket(b.readUUID(),b.readVarInt(),b.readVarInt(),b.readVarInt(),b.readVarInt(),b.readBoolean());}
- public static void handle(BodyActionPacket p,Supplier<NetworkEvent.Context> c){c.get().enqueueWork(()->{
-  var viewer=c.get().getSender();if(viewer==null)return;
-  if(!p.validShape())return;
-  if(p.action==2){if(RevivalNetwork.isViewing(viewer,p.subject))RevivalManager.closeBody(viewer);return;}
-  var subject=viewer.server.getPlayerList().getPlayer(p.subject);if(subject==null||!RevivalNetwork.canInspect(viewer,subject))return;
-  if(p.action==OPEN_OVERVIEW){RevivalManager.openBody(viewer,subject);return;}
-  if(p.region<0||p.region>=Region.values().length||p.page<0)return;
-  if(p.action==0)RevivalNetwork.sendBody(viewer,subject,RevivalManager.snapshot(subject),Region.values()[p.region],p.history,p.page);
-  else if(p.action==1)RevivalManager.startTreatment(viewer,subject);
-  else if(p.action==4)RevivalManager.promoteTreatmentRegion(viewer,subject,Region.values()[p.region]);
- });c.get().setPacketHandled(true);}
+
+public record BodyActionPacket(UUID subject, int action) {
+    public static final int OPEN_MEND = 0, START_TREATMENT = 1, CANCEL_TREATMENT = 2, CLOSE = 3;
+    public static BodyActionPacket open(UUID subject) { return new BodyActionPacket(subject, OPEN_MEND); }
+    public boolean validShape() { return subject != null && action >= OPEN_MEND && action <= CLOSE; }
+    public static void encode(BodyActionPacket packet, FriendlyByteBuf buf) {
+        buf.writeUUID(packet.subject); buf.writeVarInt(packet.action);
+    }
+    public static BodyActionPacket decode(FriendlyByteBuf buf) {
+        return new BodyActionPacket(buf.readUUID(), buf.readVarInt());
+    }
+    public static void handle(BodyActionPacket packet, Supplier<NetworkEvent.Context> context) {
+        context.get().enqueueWork(() -> {
+            var viewer = context.get().getSender();
+            if (viewer == null || !packet.validShape()) return;
+            if (packet.action == CLOSE || packet.action == CANCEL_TREATMENT) {
+                if (!RevivalNetwork.isViewing(viewer, packet.subject)) return;
+                if (packet.action == CLOSE) RevivalManager.closeBody(viewer);
+                else RevivalManager.cancelTreatment(viewer, "Treatment canceled");
+                return;
+            }
+            var subject = viewer.server.getPlayerList().getPlayer(packet.subject);
+            if (subject == null || !RevivalNetwork.canInspect(viewer, subject)) return;
+            if (packet.action == OPEN_MEND) RevivalManager.openBody(viewer, subject);
+            else RevivalManager.startTreatment(viewer, subject);
+        });
+        context.get().setPacketHandled(true);
+    }
 }

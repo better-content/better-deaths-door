@@ -38,8 +38,8 @@ public final class InjuryVisualReview {
   if(MANUAL)return;
   if(ticks==FRAMES.get(index).delay-3)mc.gui.getChat().clearMessages(false);
   if(capturing||++ticks<FRAMES.get(index).delay)return;
-  if(FRAMES.get(index).name.equals("treatment-success") && mc.screen instanceof com.bettercontent.downedplayerrevival.client.BodyScreen body
-      && body.body().treatmentActive()) {
+  if(FRAMES.get(index).name.equals("treatment-success") && mc.screen instanceof net.minecraft.client.gui.screens.inventory.InventoryScreen
+      && com.bettercontent.downedplayerrevival.client.ClientRevivalState.get(mc.player.getUUID()).map(v->v.treatmentActive()).orElse(false)) {
    if(ticks>1200)throw new IllegalStateException("Treatment did not complete in review fixture");
    return;
   }
@@ -53,18 +53,16 @@ public final class InjuryVisualReview {
   for(int[] size:new int[][]{{1280,720},{1280,960},{1920,1080}})for(int scale:new int[]{2,3,4}){
    String suffix="-"+size[0]+"x"+size[1]+"-s"+scale;
    add("inventory"+suffix,size,scale,List.of(debug("scenario @a healthy"),debug("gui @a inventory")),12);
-   add("healthy"+suffix,size,scale,List.of(debug("scenario @a healthy"),debug("gui @a body @a HEAD active 0")),12);
-   add("mixed"+suffix,size,scale,List.of(debug("scenario @a mixed"),debug("gui @a body @a LEFT_ARM active 0")),12);
-   add("region-priority"+suffix,size,scale,List.of(debug("scenario @a mixed"),debug("gui @a body @a RIGHT_ARM active 0"),debug("gui @a body-view regions 0")),12);
-   add("history"+suffix,size,scale,List.of(debug("scenario @a long_history"),debug("gui @a body @a LEFT_LEG history 4")),12);
-   add("severe"+suffix,size,scale,List.of(debug("scenario @a severe"),debug("gui @a body @a LEFT_ARM active 0")),12);
+   add("healthy"+suffix,size,scale,List.of(debug("scenario @a healthy"),debug("gui @a inventory")),12);
+   add("mixed"+suffix,size,scale,List.of(debug("scenario @a mixed"),debug("gui @a inventory")),12);
+   add("severe"+suffix,size,scale,List.of(debug("scenario @a severe"),debug("gui @a inventory")),12);
+   add("armored"+suffix,size,scale,List.of(debug("scenario @a mixed"),"item replace entity @a armor.chest with minecraft:diamond_chestplate",debug("gui @a inventory")),12);
   }
   int[] wide={1920,1080};
-  add("treatment-progress",wide,3,List.of(debug("scenario @a healthy"),debug("maim @a LEFT_ARM OPENED"),debug("gui @a body @a LEFT_ARM active 0"),debug("treatment start @a @a")),15);
+  add("treatment-progress",wide,3,List.of(debug("scenario @a healthy"),debug("maim @a LEFT_ARM OPENED"),debug("gui @a inventory"),debug("treatment start @a @a")),15);
   add("treatment-success",wide,3,List.of(),200);
-  add("treatment-interrupted",wide,3,List.of(debug("scenario @a mixed"),debug("gui @a body @a HEAD active 0"),debug("treatment start @a @a"),"damage @a 1 minecraft:generic"),12);
+  add("treatment-interrupted",wide,3,List.of(debug("scenario @a mixed"),debug("gui @a inventory"),debug("treatment start @a @a"),"damage @a 1 minecraft:generic"),12);
   add("door-hud",wide,3,List.of(debug("scenario @a severe"),debug("gui @a close")),12);
-  add("history-last-page",new int[]{1280,960},4,List.of(debug("scenario @a long_history"),debug("gui @a body @a LEFT_LEG history 19")),12);
   for(int maxHp:new int[]{20,60})for(boolean door:new boolean[]{true,false})for(int maims:new int[]{0,1,3,11,20}) {
    add("pressure-"+maims+"-hp"+maxHp+"-door"+door,wide,3,List.of(debug("pressure @a "+maims+" "+door+" "+maxHp),debug("gui @a close")),50);
   }
@@ -73,10 +71,10 @@ public final class InjuryVisualReview {
   add("pressure-healthy-faded",wide,3,List.of(debug("pressure @a 11 false 20")),220);
   add("reset-presentation",wide,3,List.of(debug("presentation @a false true"),debug("pressure @a 0 false 20")),12);
   if(MULTIPLAYER){
-   add("teammate-victim",wide,3,List.of(debug("scenario @a mixed"),"execute at @a run tp InjuryHelper ~2 ~ ~",debug("gui @a body @a LEFT_ARM active 0"),debug("gui InjuryHelper body @a LEFT_ARM active 0"),debug("capture InjuryHelper teammate-before 8")),15);
+   add("teammate-victim",wide,3,List.of(debug("scenario @a mixed"),"execute at @a run tp InjuryHelper ~2 ~ ~",debug("gui @a inventory"),debug("gui InjuryHelper mend @a"),debug("capture InjuryHelper teammate-before 8")),15);
    add("teammate-progress",wide,3,List.of(debug("treatment start InjuryHelper @a"),debug("capture InjuryHelper teammate-progress 8")),15);
    add("teammate-success",wide,3,List.of(debug("capture InjuryHelper teammate-success 60")),75);
-   add("teammate-interrupted",wide,3,List.of(debug("scenario @a mixed"),debug("gui InjuryHelper body @a HEAD active 0"),debug("treatment start InjuryHelper @a"),"damage @a 1 minecraft:generic",debug("capture InjuryHelper teammate-interrupted 8")),15);
+   add("teammate-interrupted",wide,3,List.of(debug("scenario @a mixed"),debug("gui InjuryHelper mend @a"),debug("treatment start InjuryHelper @a"),"damage @a 1 minecraft:generic",debug("capture InjuryHelper teammate-interrupted 8")),15);
   }
   // Final death uses the real server damage/death pipeline and the native DeathScreen.
   for(int[] size:new int[][]{{1280,720},{1280,960},{1920,1080}})for(int scale:new int[]{2,3,4})add("death-"+size[0]+"x"+size[1]+"-s"+scale,size,scale,FRAMES.stream().anyMatch(f->f.name.startsWith("death-"))?List.of():List.of(debug("scenario @a long_history"),debug("scenario @a final_death")),30);

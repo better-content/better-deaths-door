@@ -1,39 +1,69 @@
 package com.bettercontent.downedplayerrevival.network;
 
-import com.bettercontent.downedplayerrevival.state.*;
+import com.bettercontent.downedplayerrevival.state.MaimType;
+import com.bettercontent.downedplayerrevival.state.Region;
 import net.minecraft.network.FriendlyByteBuf;
 import java.util.*;
 
-/** Bounded wire view: aggregates never truncate injuries; history is requested in pages. */
+/** Compact current-life view. Historical totals remain in each region for the death recap. */
 public record BodyView(UUID playerId, String name, float health, float maxHealth, boolean atDoor,
- int healingLockTicks, int trauma, int traumaLifetimeTicks, double probability, double multiplier, double treatmentSeconds,
- List<RegionView> regions, List<TreatmentEntry> history, int historyPage, int historyPages,
- List<Region> treatmentPriority, boolean treatmentActive) {
- public record TreatmentEntry(int index,String itemId,MaimType type) {}
- public record RegionView(Region region, int cracked, int burnt, int opened, double reduction, int treatedCracked, int treatedBurnt, int treatedOpened) {
-  public int count(MaimType type) { return switch(type) { case CRACKED -> cracked; case BURNT -> burnt; case OPENED -> opened; }; }
-  public int total() { return cracked+burnt+opened; }
-  public int treated() { return treatedCracked+treatedBurnt+treatedOpened; }
- }
- public BodyView { regions=List.copyOf(regions); history=List.copyOf(history); treatmentPriority=List.copyOf(treatmentPriority); }
- public RegionView region(Region region) { return regions.get(region.ordinal()); }
- public static void write(BodyView v,FriendlyByteBuf b) {
-  b.writeUUID(v.playerId); b.writeUtf(v.name,128); b.writeFloat(v.health); b.writeFloat(v.maxHealth); b.writeBoolean(v.atDoor);
-  b.writeVarInt(v.healingLockTicks); b.writeVarInt(v.trauma); b.writeVarInt(v.traumaLifetimeTicks); b.writeDouble(v.probability); b.writeDouble(v.multiplier); b.writeDouble(v.treatmentSeconds);
-  for(var r:v.regions) { b.writeVarInt(r.cracked);b.writeVarInt(r.burnt);b.writeVarInt(r.opened);b.writeDouble(r.reduction);b.writeVarInt(r.treatedCracked);b.writeVarInt(r.treatedBurnt);b.writeVarInt(r.treatedOpened); }
-  b.writeVarInt(v.history.size()); for(var entry:v.history){b.writeVarInt(entry.index);b.writeUtf(entry.itemId,256);b.writeEnum(entry.type);}
-  b.writeVarInt(v.historyPage);b.writeVarInt(v.historyPages);for(Region region:v.treatmentPriority)b.writeEnum(region);b.writeBoolean(v.treatmentActive);
- }
- public static BodyView read(FriendlyByteBuf b) {
-  UUID id=b.readUUID();String name=b.readUtf(128);float health=b.readFloat(),max=b.readFloat();boolean door=b.readBoolean();
-  int lock=b.readVarInt(),trauma=b.readVarInt(),lifetime=b.readVarInt();double odds=b.readDouble(),m=b.readDouble(),seconds=b.readDouble();
-  var regions=new ArrayList<RegionView>();for(var r:Region.values()) regions.add(new RegionView(r,b.readVarInt(),b.readVarInt(),b.readVarInt(),b.readDouble(),b.readVarInt(),b.readVarInt(),b.readVarInt()));
-  int size=b.readVarInt();if(size<0||size>12)throw new IllegalArgumentException("Invalid history page");
-  var history=new ArrayList<TreatmentEntry>();for(int i=0;i<size;i++)history.add(new TreatmentEntry(b.readVarInt(),b.readUtf(256),b.readEnum(MaimType.class)));
-  int page=b.readVarInt(),pages=b.readVarInt();var priority=new ArrayList<Region>();for(int i=0;i<Region.values().length;i++)priority.add(b.readEnum(Region.class));
-  if(new HashSet<>(priority).size()!=Region.values().length)throw new IllegalArgumentException("Invalid treatment priority");
-  return new BodyView(id,name,health,max,door,lock,trauma,lifetime,odds,m,seconds,regions,history,page,pages,priority,b.readBoolean());
- }
- public String traumaLifetimeLabel() { return traumaLifetimeTicks % 1200 == 0 ? traumaLifetimeTicks / 1200 + " min" : String.format(Locale.ROOT, "%.1fs", traumaLifetimeTicks / 20.0); }
- public static String label(Enum<?> value) { String s=value.name().toLowerCase(Locale.ROOT).replace('_',' ');return Character.toUpperCase(s.charAt(0))+s.substring(1); }
+        int healingLockTicks, int trauma, int traumaLifetimeTicks, double probability,
+        double multiplier, double treatmentSeconds, List<RegionView> regions, boolean treatmentActive) {
+    public record RegionView(Region region, Map<MaimType, Integer> active, double reduction,
+            Map<MaimType, Integer> treatedCounts) {
+        public RegionView {
+            active = Map.copyOf(active);
+            treatedCounts = Map.copyOf(treatedCounts);
+        }
+        public int count(MaimType type) { return active.getOrDefault(type, 0); }
+        public int treatedCount(MaimType type) { return treatedCounts.getOrDefault(type, 0); }
+        public int total() { return active.values().stream().mapToInt(Integer::intValue).sum(); }
+        public int treated() { return treatedCounts.values().stream().mapToInt(Integer::intValue).sum(); }
+    }
+    public BodyView { regions = List.copyOf(regions); }
+    public RegionView region(Region region) { return regions.get(region.ordinal()); }
+
+    public static void write(BodyView view, FriendlyByteBuf buf) {
+        buf.writeUUID(view.playerId); buf.writeUtf(view.name, 128);
+        buf.writeFloat(view.health); buf.writeFloat(view.maxHealth); buf.writeBoolean(view.atDoor);
+        buf.writeVarInt(view.healingLockTicks); buf.writeVarInt(view.trauma);
+        buf.writeVarInt(view.traumaLifetimeTicks); buf.writeDouble(view.probability);
+        buf.writeDouble(view.multiplier); buf.writeDouble(view.treatmentSeconds);
+        for (RegionView region : view.regions) {
+            for (MaimType type : MaimType.values()) buf.writeVarInt(region.count(type));
+            buf.writeDouble(region.reduction);
+            for (MaimType type : MaimType.values()) buf.writeVarInt(region.treatedCount(type));
+        }
+        buf.writeBoolean(view.treatmentActive);
+    }
+
+    public static BodyView read(FriendlyByteBuf buf) {
+        UUID id = buf.readUUID(); String name = buf.readUtf(128);
+        float health = buf.readFloat(), max = buf.readFloat(); boolean door = buf.readBoolean();
+        int lock = buf.readVarInt(), trauma = buf.readVarInt(), lifetime = buf.readVarInt();
+        double odds = buf.readDouble(), multiplier = buf.readDouble(), seconds = buf.readDouble();
+        List<RegionView> regions = new ArrayList<>();
+        for (Region region : Region.values()) {
+            Map<MaimType, Integer> active = new EnumMap<>(MaimType.class);
+            for (MaimType type : MaimType.values()) active.put(type, checkedCount(buf.readVarInt()));
+            double reduction = buf.readDouble();
+            Map<MaimType, Integer> treated = new EnumMap<>(MaimType.class);
+            for (MaimType type : MaimType.values()) treated.put(type, checkedCount(buf.readVarInt()));
+            regions.add(new RegionView(region, active, reduction, treated));
+        }
+        return new BodyView(id, name, health, max, door, lock, trauma, lifetime, odds,
+                multiplier, seconds, regions, buf.readBoolean());
+    }
+    private static int checkedCount(int count) {
+        if (count < 0 || count > 1_000_000) throw new IllegalArgumentException("Invalid injury count");
+        return count;
+    }
+    public String traumaLifetimeLabel() {
+        return traumaLifetimeTicks % 1200 == 0 ? traumaLifetimeTicks / 1200 + " min"
+                : String.format(Locale.ROOT, "%.1fs", traumaLifetimeTicks / 20.0);
+    }
+    public static String label(Enum<?> value) {
+        String name = value.name().toLowerCase(Locale.ROOT).replace('_', ' ');
+        return Character.toUpperCase(name.charAt(0)) + name.substring(1);
+    }
 }

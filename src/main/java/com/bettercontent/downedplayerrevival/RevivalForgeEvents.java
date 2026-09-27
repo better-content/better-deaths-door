@@ -1,6 +1,7 @@
 package com.bettercontent.downedplayerrevival;
 
 import com.bettercontent.downedplayerrevival.state.Region;
+import com.bettercontent.downedplayerrevival.network.RevivalNetwork;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionResult;
 import net.minecraftforge.event.TickEvent;
@@ -46,6 +47,16 @@ public final class RevivalForgeEvents {
     @SubscribeEvent
     public static void changedDimension(PlayerEvent.PlayerChangedDimensionEvent event) {
         if (event.getEntity() instanceof ServerPlayer player) { RevivalManager.closeBody(player); RevivalManager.refresh(player); }
+    }
+    @SubscribeEvent
+    public static void startTracking(PlayerEvent.StartTracking event) {
+        if (event.getEntity() instanceof ServerPlayer viewer && event.getTarget() instanceof ServerPlayer subject)
+            RevivalNetwork.startTracking(viewer, subject);
+    }
+    @SubscribeEvent
+    public static void stopTracking(PlayerEvent.StopTracking event) {
+        if (event.getEntity() instanceof ServerPlayer viewer && event.getTarget() instanceof ServerPlayer subject)
+            RevivalNetwork.stopTracking(viewer, subject);
     }
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public static void interact(PlayerInteractEvent.EntityInteract event) {

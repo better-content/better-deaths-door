@@ -43,12 +43,13 @@ configured values used for presentation.
 
 ## Treatment
 
-Open your body through the inventory body icon. Right-click another player within reach and line
-of sight to inspect and treat them. Opening the screen only inspects. Press **Start** to begin
-server-owned automatic care. The queue follows the editable region order, then treats older injuries
-first within each region. Moving a region up changes the order after the current step. No item is
-required or consumed. Damage, closing the body screen, losing reach or sight, and disconnecting
-interrupt treatment. Each completed step remains in treatment history.
+The inventory has a **Mend** button with active injuries listed beneath it. Right-click another
+player within reach and line of sight to open a compact Mend view with their avatar and injuries.
+Opening either view only inspects; pressing **Mend** starts server-owned automatic care and the
+button then cancels it. The fixed queue treats arms, head, torso, and legs in that order, oldest
+injury first within each region. Treating arms first reduces later self-care time. No item is
+required or consumed. Damage, closing the view, losing reach or sight, and disconnecting interrupt
+treatment. Each completed step remains in treatment history.
 
 Burnt includes heat, freezing, and tagged corrosive damage. Opened denotes a major wound. Injury
 type describes the harm; its region determines the functional penalty. Old Balm and Soocher stacks
@@ -65,8 +66,10 @@ unattributed remainder is labeled unknown. There is no lineage integration.
 
 Skull marks on the heart bar represent the server’s maim-derived death probability. They remain
 subdued above zero to show carried risk; urgent Pressure sound/effects run at Death’s Door. Full
-coverage means 100%. Ordinary hearts remain readable. Treatment and final-death screens expose
-active injuries and treatment history separately. A confirmed failed death roll plays its own
+coverage means 100%. Death's Door displays zero filled health hearts while the server preserves
+a tiny engine-only survival value. Active maims appear as marks on exposed skin or over armor in
+the world and on inventory avatars. The inventory and teammate views show active injuries; the
+final-death recap retains active and treated totals. A confirmed failed death roll plays its own
 sound; surviving zero crossings do not show a final recap.
 
 Operator-level commands target explicit player names and work from the server console. Use isolated
@@ -75,11 +78,7 @@ review worlds for state-changing scenarios:
 ```text
 downedplayerrevival debug gui PLAYER inventory
 downedplayerrevival debug gui PLAYER own-body
-downedplayerrevival debug gui VIEWER body SUBJECT LEFT_ARM active 0
-downedplayerrevival debug gui VIEWER body SUBJECT LEFT_LEG history 2
-downedplayerrevival debug gui PLAYER body-view regions 0
-downedplayerrevival debug gui PLAYER body-view help 0
-downedplayerrevival debug gui PLAYER body-view detail 120
+downedplayerrevival debug gui VIEWER mend SUBJECT
 downedplayerrevival debug gui PLAYER death-recap
 downedplayerrevival debug gui PLAYER close
 downedplayerrevival debug scenario PLAYER mixed
@@ -94,21 +93,20 @@ downedplayerrevival debug presentation PLAYER true false
 Fixture names include `healthy`, `mixed`, `severe`, `long_history`,
 `healing_lock`, `trauma_expiry`, and `final_death`. The final-death fixture runs real death.
 Commands invoke production screens and handlers; they do not simulate player input.
-`gui PLAYER own-body` invokes the same client-to-server overview request as the inventory Body
-button and shared `openOwnBody` entry point. Explicit region/history commands still select detail.
+`gui PLAYER own-body` opens the inventory with the same Mend panel as ordinary entry.
 
 `pressure PLAYER MAIMS AT_DOOR MAX_HP` creates real server-owned leg injuries and health,
 then reports the actual configured death probability. `presentation PLAYER REDUCED_MOTION SOUND`
-controls the viewing client's presentation settings. History pages are zero-based and retain the
-historical item records from earlier saves. New completed steps record hands-on care. Detailed history uses six-record pages with
-no total-history limit. The death-recap command requires an actual completed death.
+controls the viewing client's presentation settings. Completed steps retain historical care records
+for the current life and recap. The death-recap command requires an actual completed death.
 
 `./gradlew runInjuryVisual` launches the isolated real Minecraft review client under
 `build/injury-visual/`, creates a disposable flat world, invokes console commands, and captures its
 actual framebuffer. The review source set is excluded from runtime JARs. Its standard matrix covers
 1280×720, 1280×960, and 1920×1080 at requested GUI scales 2, 3, and 4; Minecraft clamps scales that
-would violate its minimum GUI dimensions. It includes treatment states, history pagination,
-probability/health/absorption combinations, HUD fading, reduced motion, and native final death.
+would violate its minimum GUI dimensions. It includes inventory maim lists, armored avatars,
+treatment states, probability/health/absorption combinations, HUD fading, reduced motion, and
+native final death.
 
 For two actual connected clients, start the primary and wait for `INJURY_REVIEW_WAITING_HELPER`:
 
@@ -124,7 +122,7 @@ Then run in a second terminal:
 
 The primary exposes its isolated development world on port 56694 without account authentication;
 `InjuryHelper` joins through Minecraft's production connection flow. Console operations open the
-helper's production treatment screen, apply treatment, and capture progress, success, and damage
+helper's production Mend view, apply treatment, and capture progress, success, and damage
 interruption on both clients. The harness shuts down both clients on completion. Keep the review
 port confined to the local development environment.
 
@@ -133,10 +131,8 @@ Screenshots are saved in `build/injury-visual/screenshots/` and
 `INJURY_REVIEW_MANUAL=1` on the primary; write one production server command per line to
 `build/injury-visual/review.commands`. The harness consumes that file on the server thread.
 A harness-only line `viewport 1920 1080 3` changes the actual window and GUI scale.
-`body-view` selects the region picker, help, or detail view; its final argument is a pixel scroll
-offset through the actual screen content. The visible Region, Help and tab buttons use the same
-navigation. Normal entry opens the six-region overview. Only active injury types appear in the treatment list; small screens scroll complete
-treatment cards and history records rather than compressing them.
+Only active injury types appear in the scrollable Mend list. The inventory panel and teammate view
+use the same list and server-owned treatment control.
 A line containing `stop` ends the primary. No mouse, key, or player-control events are synthesized.
 
 On lanes without a display, an isolated user-namespace Xvfb avoids system temporary files:
@@ -146,7 +142,7 @@ unshare -Ur Xvfb :94 -screen 0 1920x1080x24 -nolisten unix -nolock -listen tcp -
 ```
 
 Run clients with `DISPLAY=localhost:94 TMPDIR=/home/dev/.tmp`. Stop that exact Xvfb process after
-review. Native toasts pause during Death’s Door and while bodily screens occupy their space, then resume
+review. Native toasts pause during Death’s Door and while the teammate Mend view occupies their space, then resume
 with their presentation lifetime preserved. Trauma duration text comes from server tuning.
 
 Every acceptance screenshot must actually be opened and reviewed; image generation or layout tests
@@ -158,7 +154,7 @@ screenshots are not evidence of audible sound quality or audio balance.
 
 `InjuryApi` exposes read-only server injury counts, semantic HP, Death’s Door state, and snapshots.
 `InjuryEvent` publishes committed entry, healing exit, maim, treatment, and final-death changes.
-Client packets contain bounded aggregates and paged history, not authoritative mutation decisions.
+Client packets contain bounded active and treated counts, not authoritative mutation decisions.
 
 RPG Stats and Configurable Death retain final-death ownership. Surviving an episode does not run
 their final-death consequences. Depth Director scales reinforcement cadence by active injuries;

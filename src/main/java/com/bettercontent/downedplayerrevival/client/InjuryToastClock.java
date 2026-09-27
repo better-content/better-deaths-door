@@ -9,7 +9,7 @@ public final class InjuryToastClock {
         var mc = Minecraft.getInstance();
         var screen = mc.screen;
         boolean atDoor = mc.player != null && ClientRevivalState.get(mc.player.getUUID()).map(body -> body.atDoor()).orElse(false);
-        boolean blocked = atDoor || screen instanceof BodyScreen || screen instanceof DeathScreen && ClientRevivalState.recap() != null;
+        boolean blocked = atDoor || screen instanceof MendScreen || screen instanceof DeathScreen && ClientRevivalState.recap() != null;
         CLOCK.update(Util.getMillis(), blocked);
         return blocked;
     }

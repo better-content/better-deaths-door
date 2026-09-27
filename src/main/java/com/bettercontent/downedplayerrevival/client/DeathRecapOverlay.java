@@ -2,6 +2,7 @@ package com.bettercontent.downedplayerrevival.client;
 import com.bettercontent.downedplayerrevival.RevivalMod;
 import com.bettercontent.downedplayerrevival.network.BodyView;
 import com.bettercontent.downedplayerrevival.state.Region;
+import com.bettercontent.downedplayerrevival.state.MaimType;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.DeathScreen;
@@ -26,21 +27,26 @@ public final class DeathRecapOverlay {
   var box=reservedBounds(screen.width,screen.height);var g=event.getGuiGraphics();if(box.height()<48)return;g.fill(box.x(),box.y(),box.x()+box.width(),box.y()+box.height(),0xDA181D23);
   var damage=ClientRevivalState.recapDamage();
   boolean compact=box.height()<170;
-  g.drawCenteredString(mc.font,"FINAL LIFE · "+damage.hits()+" accepted hits",box.x()+box.width()/2,box.y()+3,BodyScreen.INK);
-  g.drawString(mc.font,"Incoming "+amount(damage.incoming())+"   Mitigated "+amount(damage.mitigation()),box.x()+6,box.y()+17,BodyScreen.INK,false);
-  g.drawString(mc.font,"Absorbed "+amount(damage.absorption())+"   Applied "+amount(damage.applied()),box.x()+6,box.y()+30,BodyScreen.INK,false);
-  g.drawString(mc.font,"HP lost "+amount(damage.healthLost())+"   Unknown "+amount(damage.unknown()),box.x()+6,box.y()+43,BodyScreen.INK,false);
-  if(compact){int active=body.regions().stream().mapToInt(BodyView.RegionView::total).sum(),treated=body.regions().stream().mapToInt(BodyView.RegionView::treated).sum();g.drawString(mc.font,"Injuries: "+active+" active · "+treated+" treated",box.x()+6,box.y()+58,active>0?BodyScreen.RED:BodyScreen.GREEN,false);return;}
-  g.drawCenteredString(mc.font,"BODY RECORD · Cracked / Burnt / Opened",box.x()+box.width()/2,box.y()+61,BodyScreen.INK);
+  g.drawCenteredString(mc.font,"FINAL LIFE · "+damage.hits()+" accepted hits",box.x()+box.width()/2,box.y()+3,MendUi.INK);
+  g.drawString(mc.font,"Incoming "+amount(damage.incoming())+"   Mitigated "+amount(damage.mitigation()),box.x()+6,box.y()+17,MendUi.INK,false);
+  g.drawString(mc.font,"Absorbed "+amount(damage.absorption())+"   Applied "+amount(damage.applied()),box.x()+6,box.y()+30,MendUi.INK,false);
+  g.drawString(mc.font,"HP lost "+amount(damage.healthLost())+"   Unknown "+amount(damage.unknown()),box.x()+6,box.y()+43,MendUi.INK,false);
+  if(compact){int active=body.regions().stream().mapToInt(BodyView.RegionView::total).sum(),treated=body.regions().stream().mapToInt(BodyView.RegionView::treated).sum();g.drawString(mc.font,"Injuries: "+active+" active · "+treated+" treated",box.x()+6,box.y()+58,active>0?MendUi.RED:MendUi.GREEN,false);return;}
+  g.drawCenteredString(mc.font,"BODY RECORD · active / treated",box.x()+box.width()/2,box.y()+61,MendUi.INK);
   int columns=box.width()>=440?3:2,rows=(6+columns-1)/columns,cellW=(box.width()-12)/columns,cellH=(box.height()-76)/rows;
   for(var region:Region.values()){int i=region.ordinal();if(!InjuryClientConfig.REDUCED_MOTION.get()&&System.currentTimeMillis()-opened<i*80L)continue;int x=box.x()+6+(i%columns)*cellW,y=box.y()+76+(i/columns)*cellH;var r=body.region(region);
-   g.drawString(mc.font,BodyView.label(region),x,y,r.total()>0?BodyScreen.RED:BodyScreen.GREEN,false);
-   if(compact)g.drawString(mc.font,r.cracked()+"/"+r.treatedCracked()+"  "+r.burnt()+"/"+r.treatedBurnt()+"  "+r.opened()+"/"+r.treatedOpened(),x,y+9,BodyScreen.INK,false);
-   else {
-    g.drawString(mc.font,"Active "+r.cracked()+" / "+r.burnt()+" / "+r.opened(),x,y+9,BodyScreen.RED,false);
-    g.drawString(mc.font,"Treated "+r.treatedCracked()+" / "+r.treatedBurnt()+" / "+r.treatedOpened(),x,y+18,BodyScreen.GREEN,false);
-   }
+   g.drawString(mc.font,BodyView.label(region),x,y,r.total()>0?MendUi.RED:MendUi.GREEN,false);
+   g.drawString(mc.font,"Active "+r.total()+"  "+types(r,false),x,y+9,MendUi.RED,false);
+   g.drawString(mc.font,"Treated "+r.treated()+"  "+types(r,true),x,y+18,MendUi.GREEN,false);
   }
+ }
+ private static String types(BodyView.RegionView region,boolean treated){
+  StringBuilder result=new StringBuilder();
+  for(MaimType type:MaimType.values()){
+   int count=treated?region.treatedCount(type):region.count(type);
+   if(count>0){if(!result.isEmpty())result.append(" ");result.append(BodyView.label(type),0,Math.min(3,BodyView.label(type).length())).append(count);}
+  }
+  return result.toString();
  }
  private static String amount(double value){return !Double.isFinite(value)?"unknown":Math.abs(value)>=10000?String.format(java.util.Locale.ROOT,"%.2g",value):String.format(java.util.Locale.ROOT,"%.1f",value);}
 }

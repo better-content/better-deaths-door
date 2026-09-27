@@ -18,6 +18,7 @@
   },
   "client": [
     "ForgeHealthMixin",
+    "GuiHeartsMixin",
     "ToastVisibilityMixin",
     "ToastClockMixin"
   ]

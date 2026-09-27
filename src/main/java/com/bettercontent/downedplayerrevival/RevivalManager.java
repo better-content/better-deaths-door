@@ -29,7 +29,8 @@ public final class RevivalManager {
     private static final String LEGACY = "downed_player_revival:state";
     private static final String RECAP = "downed_player_revival:recap";
     private static final String FINALIZED = "downed_player_revival:finalized";
-    private static final String TREATMENT_PRIORITY = "downed_player_revival:treatment_priority";
+    private static final List<Region> TREATMENT_ORDER = List.of(Region.LEFT_ARM, Region.RIGHT_ARM,
+        Region.HEAD, Region.TORSO, Region.LEFT_LEG, Region.RIGHT_LEG);
     private static final String HANDS_ON_CARE = "downed_player_revival:care";
     private static final Map<ServerPlayer, BodyState> STATES = new IdentityHashMap<>();
     private static final Set<ServerPlayer> DIRTY = Collections.newSetFromMap(new IdentityHashMap<>());
@@ -219,34 +220,16 @@ public final class RevivalManager {
     }
     public static void openBody(ServerPlayer viewer, ServerPlayer subject) {
         if (!validTreatmentTarget(viewer, subject)) return;
-        cancelTreatment(viewer, "");
+        if (!RevivalNetwork.isViewing(viewer, subject)) cancelTreatment(viewer, "");
         RevivalNetwork.sendBody(viewer, subject, snapshot(subject));
     }
     public static void closeBody(ServerPlayer viewer) {
         cancelTreatment(viewer, "Treatment canceled"); RevivalNetwork.closeBody(viewer);
     }
-    public static List<Region> treatmentPriority(ServerPlayer viewer) {
-        int[] saved = viewer.getPersistentData().getIntArray(TREATMENT_PRIORITY);
-        if (saved.length != Region.values().length) return List.of(Region.values());
-        List<Region> order = new ArrayList<>();
-        for (int value : saved) {
-            if (value < 0 || value >= Region.values().length || order.contains(Region.values()[value])) return List.of(Region.values());
-            order.add(Region.values()[value]);
-        }
-        return List.copyOf(order);
-    }
+    public static List<Region> treatmentOrder() { return TREATMENT_ORDER; }
     public static boolean isTreating(ServerPlayer healer, ServerPlayer subject) {
         Treatment treatment = TREATMENTS.get(healer.getUUID());
         return treatment != null && treatment.subject.equals(subject.getUUID());
-    }
-    public static void promoteTreatmentRegion(ServerPlayer viewer, ServerPlayer subject, Region region) {
-        if (!validTreatmentTarget(viewer, subject) || !RevivalNetwork.isViewing(viewer, subject)) return;
-        List<Region> order = new ArrayList<>(treatmentPriority(viewer));
-        int index = order.indexOf(region);
-        if (index <= 0) return;
-        Collections.swap(order, index, index - 1);
-        viewer.getPersistentData().putIntArray(TREATMENT_PRIORITY, order.stream().mapToInt(Enum::ordinal).toArray());
-        RevivalNetwork.refreshViewing(viewer, subject);
     }
     public static void startTreatment(ServerPlayer viewer, ServerPlayer subject) {
         if (!validTreatmentTarget(viewer, subject) || !RevivalNetwork.isViewing(viewer, subject)) return;
@@ -274,7 +257,7 @@ public final class RevivalManager {
         }
     }
     private static Maim nextMaim(ServerPlayer healer, ServerPlayer subject) {
-        List<Region> order = treatmentPriority(healer);
+        List<Region> order = treatmentOrder();
         return state(subject).activeMaims().stream().min(Comparator
             .comparingInt((Maim m) -> order.indexOf(m.region()))
             .thenComparingLong(Maim::tick).thenComparingLong(Maim::id)).orElse(null);
@@ -368,7 +351,6 @@ public final class RevivalManager {
     public static void clonePlayer(ServerPlayer old, ServerPlayer replacement, boolean death) {
         STATES.remove(replacement);
         DamageLedger.cloneLife(old, replacement, death);
-        replacement.getPersistentData().putIntArray(TREATMENT_PRIORITY, treatmentPriority(old).stream().mapToInt(Enum::ordinal).toArray());
         replacement.getPersistentData().remove(RECAP); replacement.getPersistentData().remove(FINALIZED);
         if (death) { replacement.getPersistentData().remove(BodyState.ROOT_TAG); STATES.put(replacement, new BodyState()); }
         else { STATES.put(replacement, state(old).copy()); save(replacement); }

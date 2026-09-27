@@ -223,25 +223,24 @@ public final class RevivalGameTests {
         });
     }
 
-    @GameTest(template = "empty", timeoutTicks = 190)
-    public static void treatmentQueueFollowsEditedRegionPriority(GameTestHelper helper) {
+    @GameTest(template = "empty", timeoutTicks = 230)
+    public static void treatmentQueueTreatsArmsFirst(GameTestHelper helper) {
         Fixture f = new Fixture(helper);
         helper.runAtTickTime(65, () -> {
             try {
                 var body = RevivalManager.state(f.player);
                 body.addMaim(Region.HEAD, MaimType.CRACKED, RevivalManager.now(f.player));
-                body.addMaim(Region.LEFT_LEG, MaimType.BURNT, RevivalManager.now(f.player));
+                body.addMaim(Region.LEFT_ARM, MaimType.BURNT, RevivalManager.now(f.player));
                 RevivalManager.openBody(f.player, f.player);
-                for (int i = 0; i < 4; i++) RevivalManager.promoteTreatmentRegion(f.player, f.player, Region.LEFT_LEG);
-                require(RevivalManager.treatmentPriority(f.player).get(0) == Region.LEFT_LEG, "Region priority did not move to the front");
+                require(RevivalManager.treatmentOrder().get(0) == Region.LEFT_ARM, "Arms must be treated first");
                 RevivalManager.startTreatment(f.player, f.player);
-                helper.runAtTickTime(helper.getTick() + 45, () -> {
+                helper.runAtTickTime(helper.getTick() + 80, () -> {
                     try {
                         require(body.activeMaims().size() == 1 && body.activeMaims().get(0).region() == Region.HEAD,
-                            "Queue did not treat the priority region first");
+                            "Queue did not treat the arm before the head");
                     } catch (Throwable failure) { f.fail(failure); }
                 });
-                helper.runAtTickTime(helper.getTick() + 90, () -> f.finish(() -> {
+                helper.runAtTickTime(helper.getTick() + 135, () -> f.finish(() -> {
                     require(body.activeMaims().isEmpty(), "Queue did not continue to the next region");
                     require(body.treatmentHistory().size() == 2, "Queue did not record each completed step once");
                 }));
