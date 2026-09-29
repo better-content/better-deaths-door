@@ -36,6 +36,7 @@ public final class ClientRevivalInput {
     }
     @SubscribeEvent public static void inventory(ScreenEvent.Init.Post event) {
         if (!(event.getScreen() instanceof InventoryScreen screen)) return;
+        if (screen.getClass().getName().equals("com.bettercontent.journalui.JournalInventoryScreen")) return;
         inventoryScreen = screen; scroll = 0; MendUi.clear();
         Panel panel = panel(screen);
         mend = Button.builder(Component.literal("Mend"), button -> {
