@@ -6,8 +6,8 @@ license="AGPL-3.0-or-later"
 modId="${mod_id}"
 version="${mod_version}"
 displayName="${mod_name}"
-displayURL="https://github.com/better-content/better_deaths_door"
-issueTrackerURL="https://github.com/better-content/better_deaths_door/issues"
+displayURL="https://github.com/better-content/better-deaths-door"
+issueTrackerURL="https://github.com/better-content/better-deaths-door/issues"
 authors="Better Content"
 description='''
 At zero HP, keep fighting. Server-authoritative regional injuries, treatment, and borrowed time.
