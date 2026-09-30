@@ -6,8 +6,8 @@ license="AGPL-3.0-or-later"
 modId="${mod_id}"
 version="${mod_version}"
 displayName="${mod_name}"
-displayURL="https://github.com/better-content/downed_player_revival"
-issueTrackerURL="https://github.com/better-content/downed_player_revival/issues"
+displayURL="https://github.com/better-content/better_deaths_door"
+issueTrackerURL="https://github.com/better-content/better_deaths_door/issues"
 authors="Better Content"
 description='''
 At zero HP, keep fighting. Server-authoritative regional injuries, treatment, and borrowed time.
@@ -28,7 +28,7 @@ ordering="NONE"
 side="BOTH"
 
 [[dependencies.${mod_id}]]
-modId="dynamic_survival_hud"
+modId="better_survival_hud"
 mandatory=false
 versionRange="[1.0.0,)"
 ordering="AFTER"

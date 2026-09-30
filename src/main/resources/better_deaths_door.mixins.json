@@ -1,0 +1,25 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "com.bettercontent.betterdeathsdoor.mixin",
+  "compatibilityLevel": "JAVA_17",
+  "refmap": "better_deaths_door.refmap.json",
+  "mixins": [
+    "PlayerDamageMixin",
+    "PlayerMeleeBonusMixin",
+    "LivingHealthMixin",
+    "ServerDeathMixin",
+    "EpicColliderMixin",
+    "EpicPhaseMixin",
+    "EpicReachMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  },
+  "client": [
+    "ForgeHealthMixin",
+    "GuiHeartsMixin",
+    "ToastVisibilityMixin",
+    "ToastClockMixin"
+  ]
+}

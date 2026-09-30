@@ -2,9 +2,9 @@
 
 ## Project identity
 
-- Repository and artifact: `downed-player-revival`
-- Mod ID and resource namespace: `downed_player_revival`
-- Base package: `com.bettercontent.downedplayerrevival`
+- Repository and artifact: `better-deaths-door`
+- Mod ID and resource namespace: `better_deaths_door`
+- Base package: `com.bettercontent.betterdeathsdoor`
 - Java: 17
 - Forge: 1.20.1-47.4.13
 

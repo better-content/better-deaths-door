@@ -24,14 +24,14 @@ jobs:
       - name: Check out pinned HUD API provider
         uses: actions/checkout@v4
         with:
-          repository: better-content/dynamic-survival-hud
+          repository: better-content/better-survival-hud
           ref: d3822667f74883052f1521c2c03ec86d1c26311f
           path: build/ci-hud-provider
       - name: Stage pinned HUD API provider
         run: |
           ./build/ci-hud-provider/gradlew -p build/ci-hud-provider --no-daemon stageRuntimeJar
           mkdir -p "$BC_CUSTOM_MOD_JAR_DIR"
-          cp build/ci-hud-provider/build/libs/dynamic-survival-hud-1.0.0.jar "$BC_CUSTOM_MOD_JAR_DIR/"
+          cp build/ci-hud-provider/build/libs/better-survival-hud-1.0.0.jar "$BC_CUSTOM_MOD_JAR_DIR/"
       - name: Verify repository
         run: ./gradlew --no-daemon verifyFull
       - name: Preserve verification evidence

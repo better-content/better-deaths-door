@@ -10,7 +10,7 @@ group = property("mod_group_id") as String
 version = property("mod_version") as String
 
 base {
-    archivesName.set("downed-player-revival")
+    archivesName.set("better-deaths-door")
 }
 
 java {
@@ -66,9 +66,9 @@ minecraft {
 // Release builds supply the canonical staged provider; local builds use its sibling checkout.
 val providerDirectory = providers.environmentVariable("BC_CUSTOM_MOD_JAR_DIR").orNull
 require(providerDirectory == null || providerDirectory.isNotBlank()) { "BC_CUSTOM_MOD_JAR_DIR must not be blank" }
-val survivalHudJar = if (providerDirectory == null) file("../dynamic-survival-hud/build/libs/dynamic-survival-hud-1.0.0.jar")
-    else file(providerDirectory).resolve("dynamic-survival-hud-1.0.0.jar")
-require(survivalHudJar.isFile) { "Missing provider $survivalHudJar; stage dynamic-survival-hud or set BC_CUSTOM_MOD_JAR_DIR" }
+val survivalHudJar = if (providerDirectory == null) file("../better-survival-hud/build/libs/better-survival-hud-1.0.0.jar")
+    else file(providerDirectory).resolve("better-survival-hud-1.0.0.jar")
+require(survivalHudJar.isFile) { "Missing provider $survivalHudJar; stage better-survival-hud or set BC_CUSTOM_MOD_JAR_DIR" }
 
 repositories {
     maven("https://maven.minecraftforge.net")
@@ -93,14 +93,14 @@ dependencies {
         runtimeOnly(fg.deobf("curse.maven:epic-fight-mod-405076:8049910"))
     }
     if (providers.gradleProperty("injuryVisualHud").orNull != "false") {
-        add(injuryVisual.runtimeOnlyConfigurationName, fg.deobf("bettercontent.visual:dynamic-survival-hud:1.0.0"))
+        add(injuryVisual.runtimeOnlyConfigurationName, fg.deobf("bettercontent.visual:better-survival-hud:1.0.0"))
     }
     testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")
 }
 
 mixin {
-    add(sourceSets.main.get(), "downed_player_revival.refmap.json")
-    config("downed_player_revival.mixins.json")
+    add(sourceSets.main.get(), "better_deaths_door.refmap.json")
+    config("better_deaths_door.mixins.json")
 }
 
 tasks.processResources {

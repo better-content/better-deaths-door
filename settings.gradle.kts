@@ -6,4 +6,4 @@ pluginManagement {
     }
 }
 
-rootProject.name = "downed-player-revival"
+rootProject.name = "better-deaths-door"

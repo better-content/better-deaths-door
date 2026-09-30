@@ -1,7 +1,7 @@
 # Death’s Door
 
 Death’s Door is Better Content’s server-authoritative bodily injury system for Forge 1.20.1.
-The runtime identity remains `downed_player_revival`.
+The runtime identity remains `better_deaths_door`.
 
 A hit that exhausts positive HP enters Death’s Door and causes one maim. Positive HP protects
 against that hit’s death roll, even with many existing injuries. At semantic zero, every further
@@ -76,18 +76,18 @@ Operator-level commands target explicit player names and work from the server co
 review worlds for state-changing scenarios:
 
 ```text
-downedplayerrevival debug gui PLAYER inventory
-downedplayerrevival debug gui PLAYER own-body
-downedplayerrevival debug gui VIEWER mend SUBJECT
-downedplayerrevival debug gui PLAYER death-recap
-downedplayerrevival debug gui PLAYER close
-downedplayerrevival debug scenario PLAYER mixed
-downedplayerrevival debug maim PLAYER LEFT_ARM BURNT
-downedplayerrevival debug treatment start HEALER SUBJECT
-downedplayerrevival debug treatment cancel HEALER
-downedplayerrevival debug capture PLAYER review-label 12
-downedplayerrevival debug pressure PLAYER 11 true 60
-downedplayerrevival debug presentation PLAYER true false
+betterdeathsdoor debug gui PLAYER inventory
+betterdeathsdoor debug gui PLAYER own-body
+betterdeathsdoor debug gui VIEWER mend SUBJECT
+betterdeathsdoor debug gui PLAYER death-recap
+betterdeathsdoor debug gui PLAYER close
+betterdeathsdoor debug scenario PLAYER mixed
+betterdeathsdoor debug maim PLAYER LEFT_ARM BURNT
+betterdeathsdoor debug treatment start HEALER SUBJECT
+betterdeathsdoor debug treatment cancel HEALER
+betterdeathsdoor debug capture PLAYER review-label 12
+betterdeathsdoor debug pressure PLAYER 11 true 60
+betterdeathsdoor debug presentation PLAYER true false
 ```
 
 Fixture names include `healthy`, `mixed`, `severe`, `long_history`,
@@ -164,8 +164,8 @@ changes are intentionally separate from this implementation.
 
 Dynamic Survival HUD is an optional client presentation provider. The bridge uses its typed API
 behind a mod-presence guard; gameplay state remains in Revival. Compilation needs the canonical
-`dynamic-survival-hud-1.0.0.jar`, resolved from `BC_CUSTOM_MOD_JAR_DIR` when supplied, otherwise
-`../dynamic-survival-hud/build/libs/`. A blank override or missing JAR fails configuration.
+`better-survival-hud-1.0.0.jar`, resolved from `BC_CUSTOM_MOD_JAR_DIR` when supplied, otherwise
+`../better-survival-hud/build/libs/`. A blank override or missing JAR fails configuration.
 Release ordering stages the HUD provider first. CI builds the exact HUD source revision pinned in
 its workflow because the currently bundled pack provider predates the injury presentation API.
 The visual lane includes the provider by default; `-PinjuryVisualHud=false` checks standalone
@@ -175,5 +175,5 @@ client behavior without putting the provider on the runtime classpath.
 ./gradlew verifyFull stageRuntimeJar
 ```
 
-The deployable JAR is the reobfuscated `build/libs/downed-player-revival-<version>.jar`.
+The deployable JAR is the reobfuscated `build/libs/better-deaths-door-<version>.jar`.
 Local verification and staging do not deploy into the modpack or authorize pack suites/distributions.
