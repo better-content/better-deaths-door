@@ -43,6 +43,7 @@ public final class MendScreen extends Screen {
         return super.mouseScrolled(x, y, amount);
     }
     @Override public void render(GuiGraphics graphics, int mouseX, int mouseY, float partial) {
+        MendUi.refreshTheme();
         renderBackground(graphics);
         graphics.fill(left, top, left + panelWidth, top + panelHeight, MendUi.PAPER);
         graphics.fill(left, top, left + 2, top + panelHeight, body.atDoor() ? MendUi.RED : MendUi.GREEN);

@@ -69,6 +69,9 @@ require(providerDirectory == null || providerDirectory.isNotBlank()) { "BC_CUSTO
 val survivalHudJar = if (providerDirectory == null) file("../better-survival-hud/build/libs/better-survival-hud-1.0.0.jar")
     else file(providerDirectory).resolve("better-survival-hud-1.0.0.jar")
 require(survivalHudJar.isFile) { "Missing provider $survivalHudJar; stage better-survival-hud or set BC_CUSTOM_MOD_JAR_DIR" }
+val noticeJar = if (providerDirectory == null) file("../better-gameplay-notices/build/libs/better-gameplay-notices-1.0.0.jar")
+    else file(providerDirectory).resolve("better-gameplay-notices-1.0.0.jar")
+require(noticeJar.isFile) { "Missing provider $noticeJar" }
 
 repositories {
     maven("https://maven.minecraftforge.net")
@@ -86,6 +89,7 @@ repositories {
 dependencies {
     minecraft("net.minecraftforge:forge:${property("minecraft_version")}-${property("forge_version")}")
     compileOnly(files(survivalHudJar))
+    compileOnly(files(noticeJar))
     annotationProcessor("org.spongepowered:mixin:0.8.5:processor")
     compileOnly(fg.deobf("curse.maven:epic-fight-mod-405076:8049910"))
     // Opt-in repository-local compatibility verification; not a pack test or deployment.
