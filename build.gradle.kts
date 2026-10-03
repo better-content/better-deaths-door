@@ -83,6 +83,13 @@ repositories {
         metadataSources { artifact() }
         content { includeGroup("bettercontent.visual") }
     }
+    ivy {
+        name = "injuryVisualNotices"
+        url = noticeJar.parentFile.toURI()
+        patternLayout { artifact("[artifact]-[revision].[ext]") }
+        metadataSources { artifact() }
+        content { includeGroup("bettercontent.notices") }
+    }
     mavenCentral()
 }
 
@@ -90,6 +97,8 @@ dependencies {
     minecraft("net.minecraftforge:forge:${property("minecraft_version")}-${property("forge_version")}")
     compileOnly(files(survivalHudJar))
     compileOnly(files(noticeJar))
+    add(injuryVisual.runtimeOnlyConfigurationName,
+        fg.deobf("bettercontent.notices:better-gameplay-notices:1.0.0"))
     annotationProcessor("org.spongepowered:mixin:0.8.5:processor")
     compileOnly(fg.deobf("curse.maven:epic-fight-mod-405076:8049910"))
     // Opt-in repository-local compatibility verification; not a pack test or deployment.

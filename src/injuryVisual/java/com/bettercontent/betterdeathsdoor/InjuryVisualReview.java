@@ -36,6 +36,7 @@ public final class InjuryVisualReview {
   if(!ready){if(++ticks<30)return;ready=true;ticks=0;prepare();command("gamerule doDaylightCycle false");command("gamerule naturalRegeneration false");command("gamerule doMobSpawning false");command("gamerule announceAdvancements false");command("time set noon");command("gamerule sendCommandFeedback false");if(MULTIPLAYER)command("execute at @a run tp InjuryHelper ~2 ~ ~");if(!MANUAL)next();else { viewport(1280,960,4);System.out.println("INJURY_REVIEW_MANUAL_READY"); }return;}
   Path queue=mc.gameDirectory.toPath().resolve("review.commands");if(Files.isRegularFile(queue)){var commands=Files.readAllLines(queue);Files.delete(queue);for(String line:commands){if(line.equals("stop")){mc.stop();return;}if(line.startsWith("viewport ")){var dimensions=line.split(" ");viewport(Integer.parseInt(dimensions[1]),Integer.parseInt(dimensions[2]),Integer.parseInt(dimensions[3]));continue;}if(!line.isBlank())command(line);}}
   if(MANUAL)return;
+  if(index>=FRAMES.size())return;
   if(ticks==FRAMES.get(index).delay-3)mc.gui.getChat().clearMessages(false);
   if(capturing||++ticks<FRAMES.get(index).delay)return;
   if(FRAMES.get(index).name.equals("treatment-success") && mc.screen instanceof net.minecraft.client.gui.screens.inventory.InventoryScreen
@@ -63,6 +64,9 @@ public final class InjuryVisualReview {
   add("treatment-success",wide,3,List.of(),200);
   add("treatment-interrupted",wide,3,List.of(debug("scenario @a mixed"),debug("gui @a inventory"),debug("treatment start @a @a"),"damage @a 1 minecraft:generic"),12);
   add("door-hud",wide,3,List.of(debug("scenario @a severe"),debug("gui @a close")),12);
+  add("door-unlocked",wide,3,List.of(),50);
+  add("healed-hud",wide,3,List.of("effect give @a minecraft:instant_health 1 0 true"),20);
+  add("half-heart-hud",wide,3,List.of(debug("scenario @a healthy"),"damage @a 19 minecraft:generic"),30);
   for(int maxHp:new int[]{20,60})for(boolean door:new boolean[]{true,false})for(int maims:new int[]{0,1,3,11,20}) {
    add("pressure-"+maims+"-hp"+maxHp+"-door"+door,wide,3,List.of(debug("pressure @a "+maims+" "+door+" "+maxHp),debug("gui @a close")),50);
   }

@@ -19,7 +19,6 @@
   "client": [
     "DeathCauseAccessor",
     "ForgeHealthMixin",
-    "GuiHeartsMixin",
     "ToastVisibilityMixin",
     "ToastClockMixin"
   ]
