@@ -44,7 +44,7 @@ public final class ClientRevivalState {
         if (previous != null && body.regions().stream().mapToInt(BodyView.RegionView::total).sum()
                 > previous.regions().stream().mapToInt(BodyView.RegionView::total).sum()
                 && InjuryClientConfig.SOUND.get() && mc.player != null)
-            mc.player.playSound(SoundEvents.ANVIL_LAND, .22f, .7f);
+            mc.player.playSound(SoundEvents.ANVIL_LAND, .12f, .7f);
         if (packet.mode() == 1) {
             if (mc.screen instanceof MendScreen screen && screen.body().playerId().equals(body.playerId()))
                 screen.update(body);
@@ -73,7 +73,7 @@ public final class ClientRevivalState {
             case "treatment" -> MendUi.treatment(packet.progress(), packet.text());
             case "failed-proc" -> {
                 if (InjuryClientConfig.SOUND.get() && mc.player != null)
-                    mc.player.playSound(SoundEvents.ANVIL_LAND, .8f, .55f);
+                    mc.player.playSound(SoundEvents.ANVIL_LAND, .3f, .55f);
             }
             case "close" -> {
                 if (!(mc.screen instanceof net.minecraft.client.gui.screens.DeathScreen)) mc.setScreen(null);
