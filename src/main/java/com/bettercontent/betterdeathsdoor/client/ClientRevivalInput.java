@@ -4,6 +4,7 @@ import com.bettercontent.betterdeathsdoor.RevivalMod;
 import com.bettercontent.betterdeathsdoor.network.*;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.player.Player;
@@ -27,6 +28,11 @@ public final class ClientRevivalInput {
         return new Panel(inventoryLeft - width - 2, (screen.height - 166) / 2,
                 width, 166);
     }
+    private static java.util.function.Predicate<Screen> journalPanelHost = screen -> false;
+    /** Optional client presentation cooperation; no storage or treatment ownership changes. */
+    public static void setJournalPanelHost(java.util.function.Predicate<Screen> host) {
+        journalPanelHost = java.util.Objects.requireNonNull(host);
+    }
     public static void openOwnBody() {
         var player = Minecraft.getInstance().player;
         if (player != null) RevivalNetwork.CHANNEL.sendToServer(BodyActionPacket.open(player.getUUID()));
@@ -36,7 +42,7 @@ public final class ClientRevivalInput {
     }
     @SubscribeEvent public static void inventory(ScreenEvent.Init.Post event) {
         if (!(event.getScreen() instanceof InventoryScreen screen)) return;
-        if (screen.getClass().getName().equals("com.bettercontent.betterjournalinventory.JournalInventoryScreen")) return;
+        if (journalPanelHost.test(screen)) return;
         inventoryScreen = screen; scroll = 0; MendUi.clear();
         Panel panel = panel(screen);
         mend = Button.builder(Component.literal("Mend"), button -> {
