@@ -1,19 +1,11 @@
-# AGENTS.md
+# Better Death's Door
 
-## Project identity
+Forge 1.20.1 / Java 17; mod ID `better_deaths_door`;
+base package `com.bettercontent.betterdeathsdoor`.
+Source changes: `./gradlew verifyFull`; stage with `./gradlew stageRuntimeJar`.
+Artifact: `build/libs/better-deaths-door-<version>.jar`.
+Do not add compatibility aliases or migrations for pre-normalization identities.
 
-- Repository and artifact: `better-deaths-door`
-- Mod ID and resource namespace: `better_deaths_door`
-- Base package: `com.bettercontent.betterdeathsdoor`
-- Java: 17
-- Forge: 1.20.1-47.4.13
-
-## Validation
-
-- Run `./gradlew verifyFull` before committing or pushing.
-- Keep generated Gradle, build, run, log, and IDE output untracked.
-
-## Commit discipline
-
-- Commit each coherent, validated change and push it promptly.
-- Do not add compatibility aliases or migrations for pre-normalization identities.
+Read [shared workspace policy](../../better-content-modpack/docs/policies/workspace.md)
+and its linked testing/disposal policies. Docs-only changes use the shared document check
+and `git diff --check`, not unrelated runtime builds.

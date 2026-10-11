@@ -1,5 +1,11 @@
 # Death’s Door
 
+## Scope and authority
+
+This repository owns its mod-specific behavior and authoring inputs. Read [local instructions](AGENTS.md)
+and the [shared documentation/policy index](../../better-content-modpack/docs/README.md).
+
+
 Death’s Door is Better Content’s server-authoritative bodily injury system for Forge 1.20.1.
 The runtime identity remains `better_deaths_door`.
 
