@@ -27,6 +27,14 @@ versionRange="[${minecraft_version},1.21)"
 ordering="NONE"
 side="BOTH"
 
+# Local-slot compatibility is deliberately pinned; absent Mantle remains supported.
+[[dependencies.${mod_id}]]
+modId="mantle"
+mandatory=false
+versionRange="[1.11.104]"
+ordering="AFTER"
+side="CLIENT"
+
 [[dependencies.${mod_id}]]
 modId="better_survival_hud"
 mandatory=false

@@ -25,6 +25,7 @@ public final class InjuryVisualReview {
  private static int pendingScale=-1;
  private static boolean starting,ready,capturing,published;private static int ticks,index=-1;private static final List<Frame> FRAMES=new ArrayList<>();
  @SubscribeEvent public static void tick(TickEvent.ClientTickEvent event) throws Exception {
+  if(System.getProperty("injury.review.hearts")!=null)return;
   if(event.phase!=TickEvent.Phase.END)return;var mc=Minecraft.getInstance();
   if(pendingScale>=0){mc.options.guiScale().set(pendingScale);mc.resizeDisplay();pendingScale=-1;System.out.println("INJURY_REVIEW_VIEWPORT "+mc.getWindow().getWidth()+"x"+mc.getWindow().getHeight()+" gui="+mc.getWindow().getGuiScaledWidth()+"x"+mc.getWindow().getGuiScaledHeight());}
   if(!starting&&(mc.screen instanceof TitleScreen || mc.screen instanceof net.minecraft.client.gui.screens.AccessibilityOnboardingScreen)&&mc.getOverlay()==null){starting=true;mc.getTutorial().setStep(net.minecraft.client.tutorial.TutorialSteps.NONE);mc.options.pauseOnLostFocus=false;if(HELPER){net.minecraft.client.gui.screens.ConnectScreen.startConnecting(new TitleScreen(),mc,new net.minecraft.client.multiplayer.resolver.ServerAddress("localhost",56694),new net.minecraft.client.multiplayer.ServerData("Injury review","localhost:56694",false),false);return;}mc.getTutorial().setStep(net.minecraft.client.tutorial.TutorialSteps.NONE);mc.options.pauseOnLostFocus=false;mc.options.renderDistance().set(2);mc.options.simulationDistance().set(5);

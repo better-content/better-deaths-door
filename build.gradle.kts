@@ -18,12 +18,21 @@ java {
     withSourcesJar()
 }
 
+// Exact pack Mantle input, kept raw for the bytecode/SHA-1 contract.
+val mantleNative by configurations.creating { isTransitive = false }
+val mantleCoordinate = "curse.maven:mantle-74924:7563777"
+val heartProfile = providers.gradleProperty("injuryHeartProfile").orNull
+require(heartProfile == null || heartProfile in setOf("WITH_MAX", "NO_MAX", "DISABLE", "absent")) {
+    "injuryHeartProfile must be WITH_MAX, NO_MAX, DISABLE or absent"
+}
+
 // Actual Minecraft client review, excluded from the deployed runtime JAR.
 val injuryVisual by sourceSets.creating {
     compileClasspath += sourceSets.main.get().output
     runtimeClasspath += sourceSets.main.get().output
 }
 configurations[injuryVisual.implementationConfigurationName].extendsFrom(configurations.implementation.get())
+configurations[injuryVisual.compileOnlyConfigurationName].extendsFrom(configurations.compileOnly.get())
 configurations[injuryVisual.runtimeOnlyConfigurationName].extendsFrom(configurations.runtimeOnly.get())
 
 minecraft {
@@ -46,7 +55,11 @@ minecraft {
         val baseClient = create("client")
         create("injuryVisual") {
             parent(baseClient)
-            workingDirectory(project.file("build/injury-visual"))
+            workingDirectory(project.file(if (heartProfile == null) "build/injury-visual" else "build/heart-review-$heartProfile"))
+            if (heartProfile != null) {
+                property("injury.review.hearts", heartProfile)
+                args("--username", "HeartReview", "--mixin.config", "better_deaths_door.heart-review.mixins.json")
+            }
             args("--width", providers.gradleProperty("injuryVisualWidth").orElse("1280").get(),
                 "--height", providers.gradleProperty("injuryVisualHeight").orElse("720").get())
             mods { getByName(property("mod_id") as String).source(injuryVisual) }
@@ -100,6 +113,7 @@ dependencies {
     add(injuryVisual.runtimeOnlyConfigurationName,
         fg.deobf("bettercontent.notices:better-gameplay-notices:1.0.0"))
     annotationProcessor("org.spongepowered:mixin:0.8.5:processor")
+    add(injuryVisual.annotationProcessorConfigurationName, "org.spongepowered:mixin:0.8.5:processor")
     compileOnly(fg.deobf("curse.maven:epic-fight-mod-405076:8049910"))
     // Opt-in repository-local compatibility verification; not a pack test or deployment.
     if (providers.gradleProperty("injuryEpicTests").orNull == "true") {
@@ -108,11 +122,17 @@ dependencies {
     if (providers.gradleProperty("injuryVisualHud").orNull != "false") {
         add(injuryVisual.runtimeOnlyConfigurationName, fg.deobf("bettercontent.visual:better-survival-hud:1.0.0"))
     }
+    add(mantleNative.name, mantleCoordinate)
+    if (heartProfile != null && heartProfile != "absent") {
+        add(injuryVisual.runtimeOnlyConfigurationName, fg.deobf(mantleCoordinate))
+    }
     testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")
+    testImplementation("org.ow2.asm:asm-tree:9.7.1")
 }
 
 mixin {
     add(sourceSets.main.get(), "better_deaths_door.refmap.json")
+    add(injuryVisual, "better_deaths_door.heart-review.refmap.json")
     config("better_deaths_door.mixins.json")
 }
 
@@ -129,6 +149,8 @@ tasks.processResources {
 }
 
 tasks.named<Jar>("jar") {
+    // MixinGradle adds every source set's refmap to Jar tasks by default.
+    exclude("better_deaths_door.heart-review.refmap.json")
     finalizedBy("reobfJar")
 }
 
@@ -143,7 +165,23 @@ val stageRuntimeJar by tasks.registering(Copy::class) {
 
 tasks.named("assemble") { dependsOn(stageRuntimeJar) }
 tasks.withType<JavaCompile>().configureEach { options.release.set(17) }
-tasks.test { useJUnitPlatform() }
+tasks.test {
+    useJUnitPlatform()
+    inputs.files(mantleNative)
+    doFirst { systemProperty("injury.mantle.native", mantleNative.singleFile.absolutePath) }
+}
+
+// Prepare only the opt-in isolated review configuration, never the pack configuration.
+tasks.matching { it.name == "prepareRunInjuryVisual" }.configureEach {
+    if (heartProfile != null) dependsOn(tasks.test)
+    doLast {
+        if (heartProfile != null && heartProfile != "absent") {
+            val config = layout.buildDirectory.file("heart-review-$heartProfile/config/mantle-client.toml").get().asFile
+            config.parentFile.mkdirs()
+            config.writeText("heartRenderer = \"$heartProfile\"\n")
+        }
+    }
+}
 
 tasks.register("headlessGameTest") {
     group = "verification"

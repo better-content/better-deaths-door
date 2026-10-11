@@ -73,7 +73,12 @@ unattributed remainder is labeled unknown. There is no lineage integration.
 Skull marks on the heart bar represent the server’s maim-derived death probability. They remain
 subdued above zero to show carried risk; urgent Pressure sound/effects run at Death’s Door. Full
 coverage means 100%. Death's Door displays zero filled health hearts while the server preserves
-a tiny engine-only survival value. Active maims appear as marks on exposed skin or over armor in
+a tiny engine-only survival value. With Mantle 1.11.104, an optional client mixin zeros the
+health consumed by Mantle's own renderer and clears its own remembered-health/blink state. Mantle
+continues owning its colored containers and layout. Without Mantle, or with its renderer disabled,
+the Forge renderer hooks provide the same semantic-zero presentation. Absorption hearts remain
+independent: zero ordinary HP does not remove earned absorption or empty/max-health containers.
+Missing synchronized injury state never causes a guessed zero-health override. Active maims appear as marks on exposed skin or over armor in
 the world and on inventory avatars. The inventory and teammate views show active injuries; the
 final-death recap retains active and treated totals. A confirmed failed death roll plays its own
 sound; surviving zero crossings do not show a final recap.
@@ -113,6 +118,51 @@ actual framebuffer. The review source set is excluded from runtime JARs. Its sta
 would violate its minimum GUI dimensions. It includes inventory maim lists, armored avatars,
 treatment states, probability/health/absorption combinations, HUD fading, reduced motion, and
 native final death.
+
+### Focused native heart compatibility review
+
+The focused opt-in review uses the exact pack Mantle input
+`curse.maven:mantle-74924:7563777` (1.11.104, SHA-1
+`8a3f948f8c505ee92dae915ec0a1593594eb2667`). `verifyFull` checks this **raw pinned
+artifact** with ASM: method signature, current-health store, private health history, native
+heart drawing, and Forge-overlay cancellation. Optional client dependency metadata accepts exactly
+Mantle 1.11.104; another installed version fails startup rather than silently using unreviewed
+local-slot assumptions. The dependency is not bundled and is not required on normal server runs.
+A changed upstream implementation requires explicit compatibility review.
+
+```sh
+# Repository-local clients, pack Forge version, four independent renderer profiles:
+python3 scripts/review_hearts.py --profile all --forge-version 47.4.22
+# Or select WITH_MAX, NO_MAX, DISABLE or absent:
+python3 scripts/review_hearts.py --profile WITH_MAX --forge-version 47.4.22
+# With an existing display, hold the shared Forge lock around the whole invocation:
+./gradlew runInjuryVisual -Pforge_version=47.4.22 -PinjuryHeartProfile=WITH_MAX
+```
+
+The Python runner uses an isolated Xvfb display, software OpenGL, bounded startup/runtime and
+shutdown, and the workspace `fcntl.lockf` Forge cache lock. Run under a registered maintenance
+task. Profile working directories are `build/heart-review-PROFILE/`; logs are under
+`build/heart-review-control/`. Every invocation creates a fresh disposable world. The selected
+profile asserts Mantle presence and its exact renderer configuration before review. Review-only
+mixins observe the actual transformed Mantle drawer or Forge's native heart arguments; they
+are excluded from the production JAR. Survival HUD fading is disabled **only in this review**
+so healthy baseline hearts remain visible, without synthesized input.
+
+The matrix covers 20/60 maximum HP, GUI scales 2/3/4, normal/poison/wither variants, and
+absorption. Actual server damage leaves a legitimate 1 HP, then crosses into Death's Door;
+production healing returns to 1 HP, followed by a second crossing to expose stale history.
+The fixture prevents unrelated ongoing poison/wither damage after each intended hit, without
+altering renderer inputs. Framebuffers capture first synchronized Door rendering, early hurt
+frames, and settled rendering after the healing lock. Runtime assertions correlate the active
+renderer, camera UUID, synchronized Door state, effective current/remembered health, positive
+engine health, and server liveness. Final death/production respawn and native save/disconnect/
+rejoin/healing check lifecycle reset and persistence.
+
+Every acceptance image must be opened and reviewed. Numerical contracts and observed native
+health arguments are not pixel acceptance. These are isolated repository-local checks, not
+full-pack visual acceptance: proving the shipped pack requires an explicitly authorized fresh
+candidate and focused full-pack review. This command does not deploy, refresh Packwiz, package,
+or run Dist/Debug.
 
 For two actual connected clients, start the primary and wait for `INJURY_REVIEW_WAITING_HELPER`:
 

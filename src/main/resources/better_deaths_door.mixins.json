@@ -19,6 +19,7 @@
   "client": [
     "DeathCauseAccessor",
     "ForgeHealthMixin",
+    "MantleHealthMixin",
     "ToastVisibilityMixin",
     "ToastClockMixin"
   ]
