@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-"""Bounded isolated native review; holds the workspace Forge lock for every Gradle invocation."""
+"""Bounded isolated native review; holds the Forge lock per invocation and yields between profiles."""
 import argparse
+import ctypes
 import fcntl
 import hashlib
 import os
 from pathlib import Path
 import signal
+import shutil
 import socket
 import subprocess
 import time
@@ -27,18 +29,44 @@ def source_identity():
     return digest.hexdigest()
 
 
+def enable_subreaper():
+    if ctypes.CDLL(None, use_errno=True).prctl(36, 1, 0, 0, 0):
+        raise RuntimeError('Cannot establish owned-process subreaper')
+
+
+def reap_owned_children(exclude=()):
+    """Detached descendants are adopted by this dedicated runner, never another agent's processes."""
+    def children():
+        return set(map(int, Path('/proc/self/task/' + str(os.getpid()) + '/children').read_text().split())) - set(exclude)
+    for sig, seconds in ((signal.SIGTERM, 20), (signal.SIGKILL, 10)):
+        deadline = time.monotonic() + seconds
+        while True:
+            remaining = children()
+            if not remaining: return
+            for pid in remaining:
+                try: os.kill(pid, sig)
+                except ProcessLookupError: pass
+                try: os.waitpid(pid, os.WNOHANG)
+                except ChildProcessError: pass
+            if time.monotonic() >= deadline: break
+            time.sleep(.1)
+    if children(): raise RuntimeError('Owned descendant cleanup incomplete: ' + str(children()))
+
+
 def stop(process):
-    if process is None or process.poll() is not None:
-        return
-    os.killpg(process.pid, signal.SIGTERM)
+    if process is None: return
+    try: os.killpg(process.pid, signal.SIGTERM)
+    except ProcessLookupError: pass
     try:
         process.wait(timeout=20)
     except subprocess.TimeoutExpired:
-        os.killpg(process.pid, signal.SIGKILL)
-        process.wait(timeout=20)
+        try: os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError: pass
+        process.wait(timeout=10)
 
 
 def main():
+    enable_subreaper()
     # Run cleanup on cancellation as well as failures and timeouts.
     def interrupted(signum, frame):
         raise KeyboardInterrupt('Heart review interrupted')
@@ -81,10 +109,24 @@ def main():
                 else:
                     raise RuntimeError('Xvfb did not become ready')
                 env = dict(os.environ, DISPLAY='127.0.0.1:' + str(args.display), TMPDIR=str(temporary),
-                           LIBGL_ALWAYS_SOFTWARE='1', JAVA_TOOL_OPTIONS='-Djava.io.tmpdir=' + str(temporary))
+                           LIBGL_ALWAYS_SOFTWARE='1', JAVA_TOOL_OPTIONS='-XX:ActiveProcessorCount=4 -Dmixin.debug.countInjections=true -Djava.io.tmpdir=' + str(temporary))
                 identity = source_identity()
                 print('Review input SHA-256:', identity, flush=True)
-                for profile in PROFILES if args.profile == 'all' else (args.profile,):
+                for number, profile in enumerate(PROFILES if args.profile == 'all' else (args.profile,)):
+                    if number:
+                        # Give queued peers an acquisition opportunity without interrupting an active profile.
+                        fcntl.lockf(lock, fcntl.LOCK_UN)
+                        time.sleep(5)
+                        deadline = time.monotonic() + 1200
+                        while True:
+                            try:
+                                fcntl.lockf(lock, fcntl.LOCK_EX | fcntl.LOCK_NB); break
+                            except BlockingIOError:
+                                if time.monotonic() > deadline: raise RuntimeError('Profile lock wait exceeded twenty minutes')
+                                time.sleep(2)
+                        if source_identity() != identity: raise RuntimeError('Inputs changed while yielding the Forge lock')
+                    game = ROOT / ('build/heart-review-' + profile)
+                    if game.exists(): shutil.rmtree(game)  # this runner's declared disposable fixture only
                     logpath = output / (profile + '.log')
                     with logpath.open('w') as log:
                         child = subprocess.Popen(['./gradlew', '--no-daemon',
@@ -93,6 +135,8 @@ def main():
                             cwd=ROOT, env=env, stdout=log, stderr=subprocess.STDOUT,
                             start_new_session=True)
                         code = child.wait(timeout=1500)
+                    stop(child)
+                    reap_owned_children(exclude=(xvfb.pid,))
                     text = logpath.read_text()
                     if source_identity() != identity:
                         raise RuntimeError('Source/provider inputs changed during native review')
@@ -100,8 +144,10 @@ def main():
                         raise RuntimeError('Native review failed: ' + profile + '; inspect ' + str(logpath))
                     print('Native renderer observations passed:', profile, flush=True)
             finally:
-                stop(child)
-                stop(xvfb)
+                try: stop(child)
+                finally:
+                    try: stop(xvfb)
+                    finally: reap_owned_children()
 
 
 if __name__ == '__main__':

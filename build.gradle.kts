@@ -26,6 +26,13 @@ require(heartProfile == null || heartProfile in setOf("WITH_MAX", "NO_MAX", "DIS
     "injuryHeartProfile must be WITH_MAX, NO_MAX, DISABLE or absent"
 }
 
+// Pin local compilation/review resolution too; JarJar's compatibility metadata remains ranged.
+configurations.configureEach {
+    resolutionStrategy.eachDependency {
+        if (requested.group == "io.github.llamalad7" && requested.name == "mixinextras-forge") useVersion("0.5.4")
+    }
+}
+
 // Actual Minecraft client review, excluded from the deployed runtime JAR.
 val injuryVisual by sourceSets.creating {
     compileClasspath += sourceSets.main.get().output
@@ -38,6 +45,7 @@ configurations[injuryVisual.runtimeOnlyConfigurationName].extendsFrom(configurat
 minecraft {
     mappings("official", property("minecraft_version") as String)
     copyIdeResources = true
+    jarJar.enable()
 
     runs {
         configureEach {
@@ -62,14 +70,14 @@ minecraft {
             }
             args("--width", providers.gradleProperty("injuryVisualWidth").orElse("1280").get(),
                 "--height", providers.gradleProperty("injuryVisualHeight").orElse("720").get())
-            mods { getByName(property("mod_id") as String).source(injuryVisual) }
+            mods { create("better_deaths_door_review_support") { source(injuryVisual) } }
         }
         create("injuryHelper") {
             parent(baseClient)
             workingDirectory(project.file("build/injury-helper"))
             args("--username", "InjuryHelper", "--width", "1280", "--height", "720")
             property("injury.review.helper", "true")
-            mods { getByName(property("mod_id") as String).source(injuryVisual) }
+            mods { create("better_deaths_door_review_support") { source(injuryVisual) } }
         }
         create("server") { arg("--nogui") }
         create("gameTestServer")
@@ -113,7 +121,11 @@ dependencies {
     add(injuryVisual.runtimeOnlyConfigurationName,
         fg.deobf("bettercontent.notices:better-gameplay-notices:1.0.0"))
     annotationProcessor("org.spongepowered:mixin:0.8.5:processor")
+    compileOnly(annotationProcessor("io.github.llamalad7:mixinextras-common:0.5.4")!!)
+    val extras = implementation(jarJar("io.github.llamalad7:mixinextras-forge:[0.5.4,0.6.0)")!!)!!
+    jarJar.pin(extras, "0.5.4")
     add(injuryVisual.annotationProcessorConfigurationName, "org.spongepowered:mixin:0.8.5:processor")
+    add(injuryVisual.annotationProcessorConfigurationName, "io.github.llamalad7:mixinextras-common:0.5.4")
     compileOnly(fg.deobf("curse.maven:epic-fight-mod-405076:8049910"))
     // Opt-in repository-local compatibility verification; not a pack test or deployment.
     if (providers.gradleProperty("injuryEpicTests").orNull == "true") {
@@ -128,6 +140,7 @@ dependencies {
     }
     testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")
     testImplementation("org.ow2.asm:asm-tree:9.7.1")
+    testImplementation("org.ow2.asm:asm-analysis:9.7.1")
 }
 
 mixin {
@@ -148,6 +161,11 @@ tasks.processResources {
     filesMatching(listOf("META-INF/mods.toml", "pack.mcmeta")) { expand(props) }
 }
 
+tasks.named<Jar>("jarJar") {
+    exclude("better_deaths_door.heart-review.refmap.json")
+    finalizedBy("reobfJarJar")
+}
+
 tasks.named<Jar>("jar") {
     // MixinGradle adds every source set's refmap to Jar tasks by default.
     exclude("better_deaths_door.heart-review.refmap.json")
@@ -157,10 +175,26 @@ tasks.named<Jar>("jar") {
 val stageRuntimeJar by tasks.registering(Copy::class) {
     group = "build"
     description = "Stages the reobfuscated runtime jar under its canonical release filename."
-    dependsOn(tasks.named("reobfJar"))
-    from(layout.buildDirectory.file("reobfJar/output.jar"))
+    dependsOn(tasks.named("reobfJarJar"))
+    from(layout.buildDirectory.file("reobfJarJar/output.jar"))
     into(layout.buildDirectory.dir("libs"))
     rename { "${base.archivesName.get()}-$version.jar" }
+}
+
+// Independently reobfuscated support mod for stock-Forge production launch checks.
+val heartReviewSupportJar by tasks.registering(Jar::class) {
+    destinationDirectory.set(layout.buildDirectory.dir("heart-review-support-dev"))
+    exclude("better_deaths_door.refmap.json")
+    from(injuryVisual.output)
+    archiveClassifier.set("heart-review-support")
+    manifest.attributes["MixinConfigs"] = "better_deaths_door.heart-review.mixins.json"
+}
+reobf { create("heartReviewSupportJar") }
+val stageHeartReviewSupportJar by tasks.registering(Copy::class) {
+    dependsOn(tasks.named("reobfHeartReviewSupportJar"))
+    from(layout.buildDirectory.file("reobfHeartReviewSupportJar/output.jar"))
+    into(layout.buildDirectory.dir("heart-review-control"))
+    rename { "better-deaths-door-heart-review-support.jar" }
 }
 
 tasks.named("assemble") { dependsOn(stageRuntimeJar) }
@@ -168,7 +202,10 @@ tasks.withType<JavaCompile>().configureEach { options.release.set(17) }
 tasks.test {
     useJUnitPlatform()
     inputs.files(mantleNative)
-    doFirst { systemProperty("injury.mantle.native", mantleNative.singleFile.absolutePath) }
+    doFirst {
+        systemProperty("injury.mantle.native", mantleNative.singleFile.absolutePath)
+        systemProperty("injury.main.refmap", layout.buildDirectory.file("tmp/compileJava/compileJava-refmap.json").get().asFile.absolutePath)
+    }
 }
 
 // Prepare only the opt-in isolated review configuration, never the pack configuration.

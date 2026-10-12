@@ -4,6 +4,6 @@
   "package": "com.bettercontent.betterdeathsdoor.review",
   "compatibilityLevel": "JAVA_17",
   "refmap": "better_deaths_door.heart-review.refmap.json",
-  "client": ["MantleHeartObservationMixin", "ForgeHeartObservationMixin"],
+  "client": ["MantleHeartObservationMixin", "ForgeHeartObservationMixin", "MantleHealthCompositionMixin", "HealthReadObservationMixin"],
   "injectors": { "defaultRequire": 1 }
 }

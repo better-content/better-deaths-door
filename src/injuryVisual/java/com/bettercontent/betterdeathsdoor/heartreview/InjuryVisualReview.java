@@ -1,4 +1,6 @@
-package com.bettercontent.betterdeathsdoor;
+package com.bettercontent.betterdeathsdoor.heartreview;
+
+import com.bettercontent.betterdeathsdoor.*;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.Screenshot;
@@ -16,7 +18,7 @@ import java.nio.file.*;
 import java.util.*;
 
 /** Isolated real-world review. Console commands invoke production authority; no synthetic inputs. */
-@Mod.EventBusSubscriber(modid=RevivalMod.MOD_ID,value=Dist.CLIENT)
+@Mod.EventBusSubscriber(modid=HeartReviewSupport.MOD_ID,value=Dist.CLIENT)
 public final class InjuryVisualReview {
  private record Frame(String name,int width,int height,int scale,List<String> commands,int delay){}
  private static final boolean MANUAL="1".equals(System.getenv("INJURY_REVIEW_MANUAL"));

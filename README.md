@@ -73,8 +73,10 @@ unattributed remainder is labeled unknown. There is no lineage integration.
 Skull marks on the heart bar represent the server’s maim-derived death probability. They remain
 subdued above zero to show carried risk; urgent Pressure sound/effects run at Death’s Door. Full
 coverage means 100%. Death's Door displays zero filled health hearts while the server preserves
-a tiny engine-only survival value. With Mantle 1.11.104, an optional client mixin zeros the
-health consumed by Mantle's own renderer and clears its own remembered-health/blink state. Mantle
+a tiny engine-only survival value. With structurally compatible stable Mantle 1.11.x releases
+starting at 1.11.104, an optional client mixin wraps the renderer's health-read operation and
+clears its own remembered-health/blink state. It delegates the health read exactly once and only
+substitutes zero for the camera player's synchronized Door state; other wrapped results are preserved. Mantle
 continues owning its colored containers and layout. Without Mantle, or with its renderer disabled,
 the Forge renderer hooks provide the same semantic-zero presentation. Absorption hearts remain
 independent: zero ordinary HP does not remove earned absorption or empty/max-health containers.
@@ -124,17 +126,32 @@ native final death.
 The focused opt-in review uses the exact pack Mantle input
 `curse.maven:mantle-74924:7563777` (1.11.104, SHA-1
 `8a3f948f8c505ee92dae915ec0a1593594eb2667`). `verifyFull` checks this **raw pinned
-artifact** with ASM: method signature, current-health store, private health history, native
-heart drawing, and Forge-overlay cancellation. Optional client dependency metadata accepts exactly
-Mantle 1.11.104; another installed version fails startup rather than silently using unreviewed
-local-slot assumptions. The dependency is not bundled and is not required on normal server runs.
-A changed upstream implementation requires explicit compatibility review.
+artifact** with a shared ASM provenance contract: method signature, camera health-read/ceil,
+health-to-drawer and history-update flow, private history types, independent absorption and
+Forge-overlay cancellation. Local slot numbers, debug tables and harmless no-ops are not contract
+boundaries. The optional dependency range is `[1.11.104,1.12)`; an early client-class-free mixin
+plugin additionally rejects prereleases and checks both the upstream target and the target
+presented for transformation. It changes only Mantle mixin selection. Absent Mantle and dedicated
+servers do not request client renderer bytecode. Incompatible installed renderers fail clearly;
+there is no silent disabling, configuration rewrite or automatic renderer replacement.
+
+The composable operation hook uses MixinExtras 0.5.4, independently supplied through Forge JarJar
+with compatibility range `[0.5.4,0.6.0)`. Minecraft's getter is remapped; Mantle entry points and
+history fields are not. Mantle itself remains unbundled. Compatible future stable patch releases
+can pass the structural guard without editing a version allowlist, but **structural admission is
+not native verification of those releases**. Other mixins and unseen upstream semantics may still
+require review; this is update-tolerant compatibility, not a promise of universal compatibility.
 
 ```sh
 # Repository-local clients, pack Forge version, four independent renderer profiles:
 python3 scripts/review_hearts.py --profile all --forge-version 47.4.22
 # Or select WITH_MAX, NO_MAX, DISABLE or absent:
 python3 scripts/review_hearts.py --profile WITH_MAX --forge-version 47.4.22
+# Build the separate reobfuscated support JAR, under the shared Forge lock:
+./gradlew stageRuntimeJar stageHeartReviewSupportJar
+# Real production namespace: staged reobfuscated JARs in stock Forge, no userdev mapping:
+python3 scripts/review_hearts_production.py --profile WITH_MAX
+python3 scripts/review_hearts_production.py --profile absent
 # With an existing display, hold the shared Forge lock around the whole invocation:
 ./gradlew runInjuryVisual -Pforge_version=47.4.22 -PinjuryHeartProfile=WITH_MAX
 ```
@@ -156,7 +173,12 @@ altering renderer inputs. Framebuffers capture first synchronized Door rendering
 frames, and settled rendering after the healing lock. Runtime assertions correlate the active
 renderer, camera UUID, synchronized Door state, effective current/remembered health, positive
 engine health, and server liveness. Final death/production respawn and native save/disconnect/
-rejoin/healing check lifecycle reset and persistence.
+rejoin/healing check lifecycle reset and persistence. Three additional native negative cases
+cover missing synchronized state, another UUID's Door state, and a non-player camera. A second
+review-only health-operation wrapper composes with the production hook; an engine-getter probe
+requires exactly one real getter call per composed operation. Production smokes run the first
+matrix combination plus these negatives and lifecycle cases in stock Forge 47.4.22, loading the
+separately reobfuscated support mod. Development launches are not production-remapping proof.
 
 Every acceptance image must be opened and reviewed. Numerical contracts and observed native
 health arguments are not pixel acceptance. These are isolated repository-local checks, not

@@ -1,6 +1,6 @@
 package com.bettercontent.betterdeathsdoor.review;
 
-import com.bettercontent.betterdeathsdoor.HeartVisualReview;
+import com.bettercontent.betterdeathsdoor.heartreview.HeartVisualReview;
 import net.minecraftforge.client.event.RenderGuiOverlayEvent;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Pseudo;

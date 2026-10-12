@@ -1,0 +1,16 @@
+modLoader="javafml"
+loaderVersion="[47,)"
+license="AGPL-3.0-or-later"
+
+[[mods]]
+modId="better_deaths_door_review_support"
+version="1.0.0"
+displayName="Death's Door isolated heart review support"
+description="Disposable native review fixture; never a deployed pack dependency."
+
+[[dependencies.better_deaths_door_review_support]]
+modId="better_deaths_door"
+mandatory=true
+versionRange="[1.0.0,)"
+ordering="AFTER"
+side="CLIENT"

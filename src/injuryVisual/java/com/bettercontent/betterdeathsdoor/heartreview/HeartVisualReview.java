@@ -1,7 +1,12 @@
-package com.bettercontent.betterdeathsdoor;
+package com.bettercontent.betterdeathsdoor.heartreview;
+
+import com.bettercontent.betterdeathsdoor.RevivalManager;
+import com.bettercontent.betterdeathsdoor.RevivalMod;
 
 import com.bettercontent.betterdeathsdoor.client.ClientRevivalState;
 import com.bettercontent.betterdeathsdoor.client.InjuryClientConfig;
+import com.bettercontent.betterdeathsdoor.network.BodyView;
+import net.minecraft.world.entity.EntityType;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.Screenshot;
 import net.minecraft.client.gui.screens.TitleScreen;
@@ -27,7 +32,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
 
 /** Focused native heart review; never packaged, never changes player input. */
-@Mod.EventBusSubscriber(modid = RevivalMod.MOD_ID, value = Dist.CLIENT)
+@Mod.EventBusSubscriber(modid = HeartReviewSupport.MOD_ID, value = Dist.CLIENT)
 public final class HeartVisualReview {
     private record Step(String name, int scale, Consumer<ServerPlayer> action, int ticks,
                         boolean door, int expectedHealth) {}
@@ -41,12 +46,53 @@ public final class HeartVisualReview {
     private static int lifecycle, lifecycleObservations;
     private static boolean capturing;
     private static final Set<String> SEEN = new HashSet<>();
+    private static final ThreadLocal<Integer> ENGINE_READS = new ThreadLocal<>();
+    private static int wrappedOperations, negativePhase, negativeObservations, cameraEntityId;
+    private static int nonPlayerOperationBaseline;
+    private static BodyView savedView;
+    private static final UUID OTHER_PLAYER = UUID.fromString("12000000-0000-0000-0000-000000000001");
     private HeartVisualReview() {}
+
+    public static void beginHealthOperation() {
+        require(ENGINE_READS.get() == null, "Unexpected recursive health wrapper");
+        ENGINE_READS.set(0);
+    }
+    public static void engineHealthRead() {
+        Integer count = ENGINE_READS.get();
+        if (count != null) ENGINE_READS.set(count + 1);
+    }
+    public static void endHealthOperation() {
+        int count = ENGINE_READS.get(); ENGINE_READS.remove();
+        require(count == 1, "Composed operation must call real engine getter exactly once: " + count);
+        if (++wrappedOperations == 1) System.out.println("HEART_REVIEW_COMPOSITION " + PROFILE + " engineReads=1");
+    }
+    @SuppressWarnings("unchecked") private static Map<UUID, BodyView> reviewStates() {
+        try {
+            var field = ClientRevivalState.class.getDeclaredField("STATES"); field.setAccessible(true);
+            return (Map<UUID, BodyView>) field.get(null);
+        } catch (ReflectiveOperationException e) { throw new IllegalStateException(e); }
+    }
+    public static void negativeState() {
+        if (negativePhase == 1 || negativePhase == 2) reviewStates().remove(savedView.playerId());
+        if (negativePhase == 2) reviewStates().put(OTHER_PLAYER, new BodyView(OTHER_PLAYER, "Other player", 0,
+                savedView.maxHealth(), true, 0, 0, 0, 0, 1, 0, savedView.regions(), false));
+    }
 
     public static void observe(String renderer, int current, int remembered, long blink) {
         if (PROFILE == null || !ready || index < 0) return;
         var mc = Minecraft.getInstance();
-        if (mc.player == null || mc.getCameraEntity() != mc.player) return;
+        if (mc.player == null) return;
+        if (negativePhase > 0) {
+            if (negativePhase < 3 || mc.getCameraEntity() != mc.player) {
+                if (negativePhase < 3) require(ClientRevivalState.get(mc.player.getUUID()).isEmpty(), "Negative fixture state unexpectedly synchronized");
+                float expectedEngine = negativePhase < 3 ? RevivalManager.SENTINEL : 1;
+                if (mc.player.getHealth() != expectedEngine) return;
+                require(current == 1 && mc.player.isAlive(), "Negative identity/state fixture guessed zero health");
+                negativeObservations++;
+            }
+            return;
+        }
+        if (mc.getCameraEntity() != mc.player) return;
         String expectedRenderer = PROFILE.equals("absent") || PROFILE.equals("DISABLE") ? "Forge" : "Mantle";
         require(renderer.equals(expectedRenderer), "Wrong active renderer: " + renderer);
         var view = ClientRevivalState.get(mc.player.getUUID()).orElse(null);
@@ -157,7 +203,10 @@ public final class HeartVisualReview {
             });
             next(); return;
         }
-        if (index >= STEPS.size()) { lifecycleTick(mc); return; }
+        if (index >= STEPS.size()) {
+            if (negativePhase > 0) negativeTick(mc); else lifecycleTick(mc);
+            return;
+        }
         if (command == null || !command.isDone()) return;
         command.join();
         if (capturing || capture != null) return;
@@ -184,13 +233,14 @@ public final class HeartVisualReview {
     private static void next() {
         var mc = Minecraft.getInstance();
         if (++index == STEPS.size()) {
-            lifecycle = 1; ticks = lifecycleObservations = 0;
+            negativePhase = 1; ticks = negativeObservations = 0;
+            savedView = ClientRevivalState.get(mc.player.getUUID()).orElseThrow();
             command = mc.getSingleplayerServer().submit(() -> {
                 var p = mc.getSingleplayerServer().getPlayerList().getPlayer(mc.player.getUUID());
-                p.removeAllEffects(); p.setInvulnerable(false);
-                require(p.hurt(p.damageSources().genericKill(), Float.MAX_VALUE), "Final death rejected");
+                require(!RevivalManager.state(p).atDoor(), "Negative fixture must have no authoritative Door");
+                RevivalManager.setHealthInternal(p, RevivalManager.SENTINEL);
             });
-            return;
+            negativeState(); return;
         }
         Step step = STEPS.get(index);
         ticks = observations = doorFrames = 0;
@@ -201,6 +251,54 @@ public final class HeartVisualReview {
             require(player.isAlive(), "Unexpected fixture death " + step.name());
             require(RevivalManager.state(player).atDoor() == step.door(), "Server Door mismatch " + step.name());
             if (step.door()) require(player.getHealth() == RevivalManager.SENTINEL, "Server sentinel changed");
+        });
+    }
+
+    private static void negativeTick(Minecraft mc) {
+        if (capturing || capture != null) return;
+        if (negativePhase < 3) {
+            negativeState();
+            if (!command.isDone()) return;
+            command.join();
+            if (mc.player.getHealth() != RevivalManager.SENTINEL) { require(++ticks < 100, "Tiny positive health did not synchronize"); return; }
+            if (++ticks < 15) return;
+            require(negativeObservations > 0, "No actual native negative-state observations");
+            String name = negativePhase == 1 ? "negative-missing-state" : "negative-other-player-door";
+            if (SEEN.add(name)) { capture = name; return; }
+            System.out.println("HEART_REVIEW_NEGATIVE " + PROFILE + " " + name + " current=1");
+            ticks = negativeObservations = 0;
+            if (++negativePhase == 2) { negativeState(); return; }
+            reviewStates().remove(OTHER_PLAYER); reviewStates().put(savedView.playerId(), savedView);
+            command = mc.getSingleplayerServer().submit(() -> {
+                var p = mc.getSingleplayerServer().getPlayerList().getPlayer(mc.player.getUUID());
+                RevivalManager.setHealthInternal(p, 1);
+                var pig = EntityType.PIG.create(p.serverLevel());
+                pig.moveTo(p.getX() + 2, p.getY(), p.getZ(), 0, 0);
+                pig.setNoAi(true); pig.setInvulnerable(true);
+                p.serverLevel().addFreshEntity(pig); cameraEntityId = pig.getId();
+            });
+            return;
+        }
+        if (!command.isDone()) return;
+        command.join();
+        var camera = mc.level.getEntity(cameraEntityId);
+        if (camera == null || mc.player.getHealth() != 1) { require(++ticks < 100, "Non-player camera/health did not synchronize"); return; }
+        if (mc.getCameraEntity() == mc.player) {
+            mc.setCameraEntity(camera); ticks = negativeObservations = 0; nonPlayerOperationBaseline = wrappedOperations; return;
+        }
+        if (++ticks < 15) return;
+        require(negativeObservations == 0, "Native health drawer unexpectedly ran for a non-player camera");
+        require(wrappedOperations == nonPlayerOperationBaseline, "Mantle health operation ran for non-player camera");
+        if (SEEN.add("negative-non-player-camera")) { capture = "negative-non-player-camera"; return; }
+        System.out.println("HEART_REVIEW_NEGATIVE " + PROFILE + " negative-non-player-camera healthOperationSkipped=true");
+        mc.setCameraEntity(mc.player); reviewStates().remove(OTHER_PLAYER); reviewStates().put(savedView.playerId(), savedView);
+        if (!PROFILE.equals("absent") && !PROFILE.equals("DISABLE")) require(wrappedOperations > 0, "Composition wrapper never observed");
+        negativePhase = 0; lifecycle = 1; ticks = lifecycleObservations = 0;
+        command = mc.getSingleplayerServer().submit(() -> {
+            var p = mc.getSingleplayerServer().getPlayerList().getPlayer(mc.player.getUUID());
+            var pig = p.serverLevel().getEntity(cameraEntityId); if (pig != null) pig.discard();
+            p.removeAllEffects(); p.setInvulnerable(false);
+            require(p.hurt(p.damageSources().genericKill(), Float.MAX_VALUE), "Final death rejected");
         });
     }
 
@@ -247,13 +345,14 @@ public final class HeartVisualReview {
             if (++ticks < 30) return;
             require(lifecycleObservations > 0 && mc.player.getHealth() == 1, "Rejoin healing did not restore half-heart");
             System.out.println("HEART_REVIEW_COMPLETE profile=" + PROFILE + " steps=" + STEPS.size()
-                    + " captures=" + captures + " finalDeathRespawn=true saveRejoin=true");
+                    + " captures=" + captures + " finalDeathRespawn=true saveRejoin=true negatives=3 wrappedCalls=" + wrappedOperations);
             mc.stop();
         }
     }
 
     private static void prepare() {
         for (int max : new int[]{20, 60}) for (int scale : new int[]{2, 3, 4}) for (boolean absorption : new boolean[]{false, true}) {
+            if (Boolean.getBoolean("injury.review.smoke") && !STEPS.isEmpty()) return;
             String label = "hp" + max + "-scale" + scale + "-abs" + absorption;
             // Across the matrix each scale is also reviewed in normal, poison or wither colors.
             var effect = scale == 2 ? null : scale == 3 ? MobEffects.POISON : MobEffects.WITHER;

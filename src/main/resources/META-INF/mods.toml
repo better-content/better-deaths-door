@@ -27,11 +27,11 @@ versionRange="[${minecraft_version},1.21)"
 ordering="NONE"
 side="BOTH"
 
-# Local-slot compatibility is deliberately pinned; absent Mantle remains supported.
+# Stable patch releases require structural renderer admission; Mantle remains optional.
 [[dependencies.${mod_id}]]
 modId="mantle"
 mandatory=false
-versionRange="[1.11.104]"
+versionRange="[1.11.104,1.12)"
 ordering="AFTER"
 side="CLIENT"
 
