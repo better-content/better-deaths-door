@@ -36,6 +36,7 @@ public final class ClientRevivalState {
             recap = body; recapDamage = packet.damage(); recapWasDead = false; return;
         }
         BodyView previous = STATES.put(body.playerId(), body);
+        if (mc.player != null && mc.player.getUUID().equals(body.playerId())) RevivalHud.syncHeartbeat(body);
         int[] counts = new int[Region.values().length * MaimType.values().length];
         for (Region region : Region.values())
             for (MaimType type : MaimType.values())
@@ -70,7 +71,6 @@ public final class ClientRevivalState {
                 captureLabel = packet.text().replaceAll("[^a-zA-Z0-9_-]", "_");
                 captureDelay = Math.max(2, Math.min(200, packet.delay()));
             }
-            case "treatment" -> MendUi.treatment(packet.progress(), packet.text());
             case "failed-proc" -> {
                 if (InjuryClientConfig.SOUND.get() && mc.player != null)
                     mc.player.playSound(SoundEvents.ANVIL_LAND, .3f, .55f);

@@ -93,6 +93,30 @@ public final class MaimCompatibilityGameTests {
         }));
     }
 
+    @GameTest(template = "empty", timeoutTicks = 130)
+    public static void catastrophicFallHonorsCancellationWithoutCreatingMaim(GameTestHelper helper) {
+        Fixture f = new Fixture(helper);
+        helper.runAtTickTime(65, () -> f.run(() -> {
+            float max = f.player.getMaxHealth();
+            f.probe.cancel = true;
+            require(f.player.hurt(f.player.damageSources().fall(), max * 2), "Catastrophic fall rejected");
+            require(f.player.isAlive() && !RevivalManager.state(f.player).atDoor(), "Canceled healthy bypass entered Door");
+            close(f.player.getHealth(), max, "Canceled healthy bypass failed to restore pre-hit HP");
+            require(f.probe.maims == 0 && f.probe.finalDeaths == 0 && !RevivalManager.isTerminating(f.player), "Canceled bypass published injury/death or retained pending state");
+            f.player.invulnerableTime = 0;
+            f.player.hurt(f.player.damageSources().fall(), max * 1.5f);
+            require(RevivalManager.state(f.player).atDoor() && f.probe.maims == 1, "Smaller lethal fall must enter Door");
+            int before = RevivalManager.state(f.player).activeMaims().size();
+            f.player.invulnerableTime = 0;
+            f.player.hurt(f.player.damageSources().fall(), f.player.getMaxHealth() * 2);
+            require(f.player.isAlive() && RevivalManager.state(f.player).activeMaims().size() == before, "Canceled Door bypass fabricated a maim");
+            f.probe.cancel = false;
+            f.player.invulnerableTime = 0;
+            f.player.hurt(f.player.damageSources().fall(), f.player.getMaxHealth() * 2);
+            require(RevivalManager.isFinalized(f.player) && f.probe.finalDeaths == 1 && f.probe.maims == 1, "Uncanceled bypass failed to finalize once without a maim");
+        }));
+    }
+
     private static void require(boolean condition, String message) { if (!condition) throw new AssertionError(message); }
     private static void close(double actual, double expected, String message) {
         require(Math.abs(actual - expected) < .0001, message + ": " + actual + " expected " + expected);

@@ -9,7 +9,7 @@ import net.minecraftforge.network.simple.SimpleChannel;
 import java.util.*;
 
 public final class RevivalNetwork {
-    private static final String PROTOCOL = "7";
+    private static final String PROTOCOL = "8";
     public static final SimpleChannel CHANNEL = NetworkRegistry.newSimpleChannel(
             new ResourceLocation(RevivalMod.MOD_ID, "main"), () -> PROTOCOL,
             PROTOCOL::equals, PROTOCOL::equals);
@@ -25,6 +25,8 @@ public final class RevivalNetwork {
                 UiControlPacket::decode, UiControlPacket::handle, Optional.of(NetworkDirection.PLAY_TO_CLIENT));
         CHANNEL.registerMessage(3, MaimSyncPacket.class, MaimSyncPacket::encode,
                 MaimSyncPacket::decode, MaimSyncPacket::handle, Optional.of(NetworkDirection.PLAY_TO_CLIENT));
+        CHANNEL.registerMessage(4, TreatmentStatusPacket.class, TreatmentStatusPacket::encode,
+                TreatmentStatusPacket::decode, TreatmentStatusPacket::handle, Optional.of(NetworkDirection.PLAY_TO_CLIENT));
     }
     public static boolean canInspect(ServerPlayer viewer, ServerPlayer subject) {
         return RevivalManager.validTreatmentTarget(viewer, subject);
@@ -53,7 +55,7 @@ public final class RevivalNetwork {
                 (int) snapshot.healingLockTicks(), snapshot.traumaCount(),
                 snapshot.tuning().traumaLifetimeTicks(), snapshot.deathProbability(),
                 snapshot.functionalMultiplier(), RevivalManager.snapshot(viewer).treatmentSeconds(),
-                rows, RevivalManager.isTreating(viewer, subject));
+                rows, RevivalManager.isTreating(viewer, subject), RevivalManager.state(subject).heartbeatRemainingTicks(RevivalManager.now(subject)));
     }
     public static void sendBody(ServerPlayer viewer, ServerPlayer subject, BodySnapshot snapshot) {
         if (!canInspect(viewer, subject)) return;
@@ -91,7 +93,7 @@ public final class RevivalNetwork {
         send(player, new StateSyncPacket(view(player, player, snapshot), 2, damage));
     }
     public static void treatmentStatus(ServerPlayer viewer, ServerPlayer subject, float progress, String message) {
-        send(viewer, new UiControlPacket("treatment", message, progress, 0));
+        send(viewer, new TreatmentStatusPacket(subject.getUUID(), progress, message));
     }
     public static void send(ServerPlayer player, Object packet) {
         if (player.connection != null)

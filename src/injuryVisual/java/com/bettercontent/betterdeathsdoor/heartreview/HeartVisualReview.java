@@ -75,7 +75,7 @@ public final class HeartVisualReview {
     public static void negativeState() {
         if (negativePhase == 1 || negativePhase == 2) reviewStates().remove(savedView.playerId());
         if (negativePhase == 2) reviewStates().put(OTHER_PLAYER, new BodyView(OTHER_PLAYER, "Other player", 0,
-                savedView.maxHealth(), true, 0, 0, 0, 0, 1, 0, savedView.regions(), false));
+                savedView.maxHealth(), true, 0, 0, 0, 0, 1, 0, savedView.regions(), false, 0));
     }
 
     public static void observe(String renderer, int current, int remembered, long blink) {
@@ -321,7 +321,7 @@ public final class HeartVisualReview {
                 var p = mc.getSingleplayerServer().getPlayerList().getPlayer(mc.player.getUUID());
                 p.removeAllEffects(); p.setInvulnerable(false); p.invulnerableTime = 0;
                 RevivalManager.debugScenario(p, "healthy");
-                require(p.hurt(p.damageSources().fall(), p.getMaxHealth() * 2), "Reconnect Door damage rejected");
+                require(p.hurt(p.damageSources().fall(), p.getMaxHealth() * 1.5f), "Reconnect Door damage rejected");
                 require(RevivalManager.state(p).atDoor() && p.getHealth() == RevivalManager.SENTINEL,
                         "Reconnect fixture did not enter real Door");
                 p.setInvulnerable(true);
@@ -375,7 +375,7 @@ public final class HeartVisualReview {
             }, 25, false, 1));
             Consumer<ServerPlayer> enter = p -> {
                 p.removeAllEffects(); p.setInvulnerable(false); p.invulnerableTime = 0;
-                require(p.hurt(p.damageSources().fall(), max * 2), "Lethal damage rejected");
+                require(p.hurt(p.damageSources().fall(), max * 1.5f), "Lethal damage rejected");
                 if (absorption) p.addEffect(new MobEffectInstance(MobEffects.ABSORPTION, 12000, 0, false, false));
                 if (effect != null) p.addEffect(new MobEffectInstance(effect, 12000, 0, false, false));
                 p.setInvulnerable(true);

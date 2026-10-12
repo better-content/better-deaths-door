@@ -19,6 +19,8 @@ import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.event.EntityRenderersEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
+import net.minecraftforge.fml.ModList;
+import net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent;
 import java.util.*;
 
 /** Region-aligned marks shared by world rendering and the inventory avatar. */
@@ -30,12 +32,19 @@ public final class MaimRenderLayer extends RenderLayer<AbstractClientPlayer, Pla
 
     private MaimRenderLayer(PlayerRenderer renderer, boolean slim) {
         super(renderer);
-        skin = model(slim, .32f);
+        skin = model(slim, .6f);
         armor = model(slim, 1.2f);
     }
     private static PlayerModel<AbstractClientPlayer> model(boolean slim, float inflation) {
         return new PlayerModel<>(LayerDefinition.create(
                 PlayerModel.createMesh(new CubeDeformation(inflation), slim), 64, 64).bakeRoot(), slim);
+    }
+    @SubscribeEvent
+    public static void clientSetup(FMLClientSetupEvent event) {
+        // Keep Epic types out of this always-loaded vanilla layer's signatures.
+        if (ModList.get().getModContainerById("epicfight")
+                .map(mod -> MaimSurface.supportsEpic(mod.getModInfo().getVersion().toString()))
+                .orElse(false)) EpicMaimRenderLayer.register();
     }
     @SubscribeEvent
     public static void addLayers(EntityRenderersEvent.AddLayers event) {
@@ -47,7 +56,7 @@ public final class MaimRenderLayer extends RenderLayer<AbstractClientPlayer, Pla
     private static ResourceLocation texture(String name) {
         return new ResourceLocation(RevivalMod.MOD_ID, "textures/entity/maim_" + name + ".png");
     }
-    private static ResourceLocation texture(MaimType type) {
+    static ResourceLocation texture(MaimType type) {
         String name = type.name().toLowerCase(Locale.ROOT);
         return switch (name) {
             case "cracked", "burnt", "opened", "low_oxygen", "hypoxia" -> texture(name);
@@ -84,9 +93,14 @@ public final class MaimRenderLayer extends RenderLayer<AbstractClientPlayer, Pla
     }
     private static void copyParts(PlayerModel<AbstractClientPlayer> from,
             PlayerModel<AbstractClientPlayer> to) {
-        to.head.copyFrom(from.head); to.body.copyFrom(from.body);
-        to.leftArm.copyFrom(from.leftArm); to.rightArm.copyFrom(from.rightArm);
-        to.leftLeg.copyFrom(from.leftLeg); to.rightLeg.copyFrom(from.rightLeg);
+        copyPart(from.head, to.head); copyPart(from.body, to.body);
+        copyPart(from.leftArm, to.leftArm); copyPart(from.rightArm, to.rightArm);
+        copyPart(from.leftLeg, to.leftLeg); copyPart(from.rightLeg, to.rightLeg);
+    }
+    private static void copyPart(ModelPart from, ModelPart to) {
+        to.copyFrom(from);
+        to.visible = from.visible;
+        to.skipDraw = from.skipDraw;
     }
     private static ModelPart part(PlayerModel<AbstractClientPlayer> model, Region region) {
         return switch (region) {

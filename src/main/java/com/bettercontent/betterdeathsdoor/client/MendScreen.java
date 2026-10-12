@@ -17,9 +17,10 @@ public final class MendScreen extends Screen {
     public MendScreen(BodyView body) {
         super(Component.literal("Mend " + body.name()));
         this.body = body;
+        MendUi.observe(body);
     }
     public BodyView body() { return body; }
-    public void update(BodyView next) { body = next; updateButton(); }
+    public void update(BodyView next) { body = next; MendUi.observe(next); updateButton(); }
     @Override protected void init() {
         panelWidth = Math.min(420, width - 20); panelHeight = Math.min(250, height - 20);
         left = (width - panelWidth) / 2; top = (height - panelHeight) / 2;
@@ -30,8 +31,10 @@ public final class MendScreen extends Screen {
     }
     private void updateButton() {
         if (mend == null) return;
-        mend.setMessage(Component.literal(body.treatmentActive() ? "Cancel" : "Mend"));
-        mend.active = body.treatmentActive() || body.regions().stream().anyMatch(region -> region.total() > 0);
+        var view = MendUi.presentation(body);
+        mend.setMessage(Component.literal(view.action()));
+        mend.active = view.enabled();
+        mend.setTooltip(net.minecraft.client.gui.components.Tooltip.create(Component.literal(view.status())));
     }
     @Override public boolean mouseScrolled(double x, double y, double amount) {
         int listX = left + 155, listY = top + 64, listWidth = panelWidth - 170;
@@ -64,10 +67,10 @@ public final class MendScreen extends Screen {
                     listY - 13, MendUi.MUTED, false);
         scroll = Math.min(scroll, MendUi.maxScroll(body, listHeight));
         MendUi.renderList(graphics, font, body, listX, listY, listWidth, listHeight, scroll);
+        updateButton();
         MendUi.progress(graphics, font, body, listX, top + panelHeight - 29, listWidth);
         super.render(graphics, mouseX, mouseY, partial);
     }
-    @Override public void tick() { MendUi.tick(); }
     @Override public boolean isPauseScreen() { return false; }
     @Override public void removed() {
         if (minecraft.getConnection() != null)

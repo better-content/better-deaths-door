@@ -38,6 +38,7 @@ public final class RevivalManager {
     private static final Set<ServerPlayer> TERMINATING = Collections.newSetFromMap(new IdentityHashMap<>());
     private record PendingRolledMaim(Region region, MaimType type) {}
     private static final Map<ServerPlayer, PendingRolledMaim> PENDING_ROLLED_MAIMS = new IdentityHashMap<>();
+    private static final Map<ServerPlayer, Float> CATASTROPHIC_HEALTH = new IdentityHashMap<>();
     private static final Map<UUID, Treatment> TREATMENTS = new HashMap<>();
     private static final ThreadLocal<Integer> INTERNAL_WRITE = ThreadLocal.withInitial(() -> 0);
     private static final ThreadLocal<Integer> HEAL_CALL = ThreadLocal.withInitial(() -> 0);
@@ -96,6 +97,7 @@ public final class RevivalManager {
         interruptParticipant(p, "Treatment interrupted: damage taken");
         BodySnapshot before = snapshot(p);
         state(p).addTrauma(now(p), RevivalConfig.tuning());
+        state(p).refreshHeartbeat(now(p));
         DIRTY.add(p);
         BodySnapshot after = snapshot(p);
         if (after.traumaCount() > before.traumaCount())
@@ -103,6 +105,14 @@ public final class RevivalManager {
     }
     public static void applyDamageHealth(ServerPlayer p, DamageSource source, float proposed) {
         if (!eligible(p) || bypasses(source)) { setHealthInternal(p, proposed); return; }
+        DamageLedger.AcceptedHit hit = DamageLedger.acceptedHit(p);
+        if (hit != null && CatastrophicFall.bypasses(source.is(DamageTypeTags.IS_FALL), hit.hpDamage(), hit.maxHealthBefore())) {
+            // Mark this attempt so LivingDeathEvent does not reinterpret it as another Door hit.
+            TERMINATING.add(p);
+            CATASTROPHIC_HEALTH.put(p, hit.healthBefore());
+            setHealthInternal(p, 0);
+            return;
+        }
         BodyState body = state(p);
         if (!body.atDoor() && proposed > 0) { setHealthInternal(p, proposed); return; }
         Region region = region(p, source);
@@ -297,12 +307,12 @@ public final class RevivalManager {
         CompoundTag saved = new CompoundTag(); saved.put("body", state(p).save()); saved.putLong("tick", recap.serverTick());
         saved.putFloat("maxHealth", recap.maxHealth()); saved.put("tuning", saveTuning(recap.tuning()));
         saved.put("damage", DamageLedger.snapshot(p).save());
-        boolean failedProc = TERMINATING.contains(p);
+        boolean failedProc = PENDING_ROLLED_MAIMS.containsKey(p);
         p.getPersistentData().put(RECAP, saved);
         p.getPersistentData().putBoolean(FINALIZED, true);
         interruptParticipant(p, "Treatment interrupted: life ended");
         state(p).clear(); p.getPersistentData().remove(BodyState.ROOT_TAG);
-        DIRTY.remove(p); HEALED.remove(p); TERMINATING.remove(p); PENDING_ROLLED_MAIMS.remove(p);
+        DIRTY.remove(p); HEALED.remove(p); TERMINATING.remove(p); PENDING_ROLLED_MAIMS.remove(p); CATASTROPHIC_HEALTH.remove(p);
         if (p.connection != null) {
             RevivalNetwork.sync(p, snapshot(p));
             RevivalNetwork.sendRecap(p, recap, DamageLedger.Summary.load(saved.getCompound("damage")));
@@ -313,6 +323,12 @@ public final class RevivalManager {
     public static void canceledDeath(ServerPlayer p) {
         TERMINATING.remove(p);
         PendingRolledMaim pending = PENDING_ROLLED_MAIMS.remove(p);
+        Float previousHealth = CATASTROPHIC_HEALTH.remove(p);
+        if (previousHealth != null && !isFinalized(p)) {
+            // Honor another mod's death cancellation without manufacturing an injury.
+            setHealthInternal(p, state(p).atDoor() ? SENTINEL : Math.max(SENTINEL, Math.min(p.getMaxHealth(), previousHealth)));
+            DIRTY.remove(p); save(p); refresh(p);
+        }
         if (state(p).atDoor() && p.getHealth() <= 0) setHealthInternal(p, SENTINEL);
         if (pending != null && !isFinalized(p)) {
             // A canceled final-death event survived this accepted hit: its consequence is still guaranteed.
@@ -346,7 +362,7 @@ public final class RevivalManager {
     public static void logout(ServerPlayer p) {
         interruptParticipant(p, "Treatment interrupted: player disconnected"); RevivalNetwork.closeBody(p);
         if (!isFinalized(p)) save(p);
-        STATES.remove(p); DIRTY.remove(p); HEALED.remove(p); TERMINATING.remove(p); PENDING_ROLLED_MAIMS.remove(p);
+        STATES.remove(p); DIRTY.remove(p); HEALED.remove(p); TERMINATING.remove(p); PENDING_ROLLED_MAIMS.remove(p); CATASTROPHIC_HEALTH.remove(p);
     }
     public static void clonePlayer(ServerPlayer old, ServerPlayer replacement, boolean death) {
         STATES.remove(replacement);
@@ -354,10 +370,10 @@ public final class RevivalManager {
         replacement.getPersistentData().remove(RECAP); replacement.getPersistentData().remove(FINALIZED);
         if (death) { replacement.getPersistentData().remove(BodyState.ROOT_TAG); STATES.put(replacement, new BodyState()); }
         else { STATES.put(replacement, state(old).copy()); save(replacement); }
-        STATES.remove(old); TERMINATING.remove(old); PENDING_ROLLED_MAIMS.remove(old); DIRTY.remove(old); HEALED.remove(old);
+        STATES.remove(old); TERMINATING.remove(old); PENDING_ROLLED_MAIMS.remove(old); CATASTROPHIC_HEALTH.remove(old); DIRTY.remove(old); HEALED.remove(old);
         refresh(replacement);
     }
-    public static void shutdown() { STATES.clear(); DIRTY.clear(); HEALED.clear(); TERMINATING.clear(); PENDING_ROLLED_MAIMS.clear(); TREATMENTS.clear(); RevivalNetwork.clear(); }
+    public static void shutdown() { STATES.clear(); DIRTY.clear(); HEALED.clear(); TERMINATING.clear(); PENDING_ROLLED_MAIMS.clear(); CATASTROPHIC_HEALTH.clear(); TREATMENTS.clear(); RevivalNetwork.clear(); }
 
     /** Explicit admin fixture command; callers restrict this to isolated review players. */
     public static void debugScenario(ServerPlayer p, String fixture) {
@@ -366,7 +382,7 @@ public final class RevivalManager {
         if (fixture.equals("final-death")) { p.hurt(p.damageSources().genericKill(), Float.MAX_VALUE); return; }
         interruptParticipant(p, "Review scenario reset");
         p.getPersistentData().remove(FINALIZED); p.getPersistentData().remove(RECAP);
-        state(p).clear(); TERMINATING.remove(p); PENDING_ROLLED_MAIMS.remove(p);
+        state(p).clear(); TERMINATING.remove(p); PENDING_ROLLED_MAIMS.remove(p); CATASTROPHIC_HEALTH.remove(p);
         if (!fixture.equals("healthy")) {
             for (Region region : Region.values()) {
                 int count = fixture.equals("severe") ? 4 : 1;

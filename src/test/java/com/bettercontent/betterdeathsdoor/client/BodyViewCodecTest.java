@@ -21,7 +21,7 @@ class BodyViewCodecTest {
             return new BodyView.RegionView(region, active, .137, treated);
         }).toList();
         var original = new BodyView(UUID.randomUUID(), "Teammate", 0, 37, true, 32, 12, 3600,
-                .42, .75, 7.33, regions, true);
+                .42, .75, 7.33, regions, true, 599);
         var buffer = new FriendlyByteBuf(Unpooled.buffer());
         try {
             BodyView.write(original, buffer);
@@ -46,7 +46,7 @@ class BodyViewCodecTest {
             return new BodyView.RegionView(region, counts, 0, Map.of());
         }).toList();
         var invalid = new BodyView(UUID.randomUUID(), "Review", 20, 20, false, 0, 0, 1200,
-                0, .5, 2, regions, false);
+                0, .5, 2, regions, false, 0);
         var buffer = new FriendlyByteBuf(Unpooled.buffer());
         try {
             BodyView.write(invalid, buffer);

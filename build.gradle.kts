@@ -1,3 +1,7 @@
+import groovy.json.JsonSlurper
+import java.util.zip.ZipFile
+import java.util.jar.Manifest as JarManifest
+
 plugins {
     idea
     jacoco
@@ -20,6 +24,7 @@ java {
 
 // Exact pack Mantle input, kept raw for the bytecode/SHA-1 contract.
 val mantleNative by configurations.creating { isTransitive = false }
+val epicNative by configurations.creating { isTransitive = false }
 val mantleCoordinate = "curse.maven:mantle-74924:7563777"
 val heartProfile = providers.gradleProperty("injuryHeartProfile").orNull
 require(heartProfile == null || heartProfile in setOf("WITH_MAX", "NO_MAX", "DISABLE", "absent")) {
@@ -134,6 +139,7 @@ dependencies {
     if (providers.gradleProperty("injuryVisualHud").orNull != "false") {
         add(injuryVisual.runtimeOnlyConfigurationName, fg.deobf("bettercontent.visual:better-survival-hud:1.0.0"))
     }
+    add(epicNative.name, "curse.maven:epic-fight-mod-405076:8049910")
     add(mantleNative.name, mantleCoordinate)
     if (heartProfile != null && heartProfile != "absent") {
         add(injuryVisual.runtimeOnlyConfigurationName, fg.deobf(mantleCoordinate))
@@ -161,21 +167,103 @@ tasks.processResources {
     filesMatching(listOf("META-INF/mods.toml", "pack.mcmeta")) { expand(props) }
 }
 
+val generatedRefmap = layout.buildDirectory.file("tmp/compileJava/compileJava-refmap.json")
+tasks.named<JavaCompile>("compileJava") {
+    outputs.file(generatedRefmap)
+    outputs.file(layout.buildDirectory.file("tmp/compileJava/compileJava-mappings.tsrg"))
+    options.isIncremental = false
+}
+
 tasks.named<Jar>("jarJar") {
+    dependsOn(tasks.named("compileJava"))
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    from(generatedRefmap) { rename { "better_deaths_door.refmap.json" } }
     exclude("better_deaths_door.heart-review.refmap.json")
     finalizedBy("reobfJarJar")
 }
 
 tasks.named<Jar>("jar") {
+    dependsOn(tasks.named("compileJava"))
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    from(generatedRefmap) { rename { "better_deaths_door.refmap.json" } }
     // MixinGradle adds every source set's refmap to Jar tasks by default.
     exclude("better_deaths_door.heart-review.refmap.json")
     finalizedBy("reobfJar")
 }
 
+val verifyRuntimeRefmap by tasks.registering {
+    group = "verification"
+    description = "Validates all production Minecraft references in the final JarJar artifact."
+    dependsOn(tasks.named("reobfJarJar"))
+    val runtimeJar = layout.buildDirectory.file("reobfJarJar/output.jar")
+    inputs.file(runtimeJar)
+    doLast {
+        val expected = mapOf(
+            "ToastClockMixin" to mapOf(
+                "net.minecraft.client.gui.components.toasts.ToastComponent\$ToastInstance" to "net/minecraft/client/gui/components/toasts/ToastComponent\$ToastInstance",
+                "Lnet/minecraft/Util;getMillis()J" to "m_137550_", "render" to "m_280442_"),
+            "ServerDeathMixin" to mapOf("die" to "m_6667_"),
+            "DeathCauseAccessor" to mapOf("causeOfDeath" to "f_95907_"),
+            "ToastVisibilityMixin" to mapOf("render" to "m_94920_"),
+            "PlayerDamageMixin" to mapOf("actuallyHurt" to "m_6475_",
+                "Lnet/minecraft/world/entity/player/Player;setHealth(F)V" to "m_21153_"),
+            "MantleHealthMixin" to mapOf("Lnet/minecraft/world/entity/player/Player;getHealth()F" to "m_21223_"),
+            "LivingHealthMixin" to mapOf("heal" to "m_5634_", "setHealth" to "m_21153_"),
+            "PlayerMeleeBonusMixin" to mapOf("attack" to "m_5706_",
+                "Lnet/minecraft/world/item/enchantment/EnchantmentHelper;getDamageBonus(Lnet/minecraft/world/item/ItemStack;Lnet/minecraft/world/entity/MobType;)F" to "m_44833_",
+                "Lnet/minecraft/world/entity/LivingEntity;hurt(Lnet/minecraft/world/damagesource/DamageSource;F)Z" to "m_6469_")
+        )
+        val unmappedNative = setOf("EpicColliderMixin", "EpicPhaseMixin", "EpicReachMixin", "ForgeHealthMixin")
+        val namespace = "com.bettercontent.betterdeathsdoor.mixin"
+        ZipFile(runtimeJar.get().asFile).use { zip ->
+            fun json(name: String): Map<*, *> {
+                val entry = zip.getEntry(name) ?: throw GradleException("Runtime JAR is missing $name")
+                return zip.getInputStream(entry).reader().use { JsonSlurper().parse(it) } as Map<*, *>
+            }
+            val config = json("better_deaths_door.mixins.json")
+            check(config["required"] == true && config["package"] == namespace
+                    && config["refmap"] == "better_deaths_door.refmap.json"
+                    && config["plugin"] == "$namespace.MantleCompatibilityPlugin") { "Invalid runtime mixin/refmap metadata" }
+            val registered = listOf("mixins", "client", "server").flatMap { (config[it] as? List<*>) ?: emptyList<Any>() }
+            check(registered.size == registered.toSet().size && registered.toSet() == expected.keys + unmappedNative) {
+                "Registered mixins must all be covered by the runtime refmap contract: $registered"
+            }
+            val prefix = namespace.replace('.', '/') + "/"
+            registered.forEach { check(zip.getEntry(prefix + it + ".class") != null) { "Registered runtime mixin $it is missing" } }
+            check(zip.getEntry("better_deaths_door.heart-review.refmap.json") == null) { "Review-only refmap leaked into production" }
+            val manifest = zip.getEntry("META-INF/MANIFEST.MF") ?: throw GradleException("Runtime manifest is missing")
+            val configs = zip.getInputStream(manifest).use { JarManifest(it) }.mainAttributes.getValue("MixinConfigs")
+            check(configs?.split(',')?.map(String::trim)?.contains("better_deaths_door.mixins.json") == true)
+            val refmap = json("better_deaths_door.refmap.json")
+            val data = refmap["data"] as? Map<*, *> ?: throw GradleException("Runtime refmap has no environments")
+            check(refmap["mappings"] == data["searge"]) { "Default and production searge mappings must agree" }
+            for (table in listOf(refmap["mappings"], data["searge"])) {
+                val types = table as? Map<*, *> ?: throw GradleException("Runtime refmap lacks default/searge mappings")
+                check(types.keys == expected.keys.map { prefix + it }.toSet()) { "Runtime refmap coverage is incomplete/stale" }
+                expected.forEach { (name, selectors) ->
+                    val mappings = types[prefix + name] as? Map<*, *> ?: throw GradleException("Missing $name mappings")
+                    check(mappings.keys == selectors.keys) { "Incomplete/stale $name reference selectors: $mappings" }
+                    selectors.forEach { (selector, alias) ->
+                        val mapped = mappings[selector] as? String ?: throw GradleException("Missing $name.$selector")
+                        val reference = if (mapped.startsWith("L")) mapped.substringAfter(';') else mapped
+                        val member = reference.substringBefore('(').substringBefore(':')
+                        check(if (alias.startsWith("net/")) mapped == alias else member == alias) {
+                            "Incorrect production alias for $name.$selector: $mapped"
+                        }
+                        if ('(' in selector) check(mapped.substringAfter('(') == selector.substringAfter('(')) {
+                            "Incorrect production descriptor for $name.$selector: $mapped"
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 val stageRuntimeJar by tasks.registering(Copy::class) {
     group = "build"
     description = "Stages the reobfuscated runtime jar under its canonical release filename."
-    dependsOn(tasks.named("reobfJarJar"))
+    dependsOn(verifyRuntimeRefmap)
     from(layout.buildDirectory.file("reobfJarJar/output.jar"))
     into(layout.buildDirectory.dir("libs"))
     rename { "${base.archivesName.get()}-$version.jar" }
@@ -201,8 +289,9 @@ tasks.named("assemble") { dependsOn(stageRuntimeJar) }
 tasks.withType<JavaCompile>().configureEach { options.release.set(17) }
 tasks.test {
     useJUnitPlatform()
-    inputs.files(mantleNative)
+    inputs.files(mantleNative, epicNative)
     doFirst {
+        systemProperty("injury.epic.native", epicNative.singleFile.absolutePath)
         systemProperty("injury.mantle.native", mantleNative.singleFile.absolutePath)
         systemProperty("injury.main.refmap", layout.buildDirectory.file("tmp/compileJava/compileJava-refmap.json").get().asFile.absolutePath)
     }
@@ -236,7 +325,7 @@ tasks.matching { it.name == "prepareRunGameTestServer" }.configureEach {
 
 tasks.register("verifyFast") {
     group = "verification"
-    dependsOn(tasks.named("check"))
+    dependsOn(tasks.named("check"), verifyRuntimeRefmap)
 }
 
 tasks.register("verifyFull") {

@@ -40,7 +40,7 @@ public final class RevivalGameTests {
         f.atReady(() -> {
             f.player.experienceLevel = 7;
             f.player.setSprinting(true);
-            require(f.player.hurt(f.player.damageSources().fall(), 100), "Lethal fall was not accepted");
+            require(f.player.hurt(f.player.damageSources().fall(), 25), "Ordinary lethal fall was not accepted");
             BodyState body = RevivalManager.state(f.player);
             require(body.atDoor() && f.player.isAlive(), "Lethal damage did not preserve the living player at Death's Door");
             require(body.activeMaims().size() == 1, "Zero crossing must add exactly one maim");
@@ -54,12 +54,68 @@ public final class RevivalGameTests {
         });
     }
 
+    @GameTest(template = "empty", timeoutTicks = 130)
+    public static void catastrophicFallAtScaledThresholdKillsHealthyPlayerOnce(GameTestHelper helper) {
+        Fixture f = new Fixture(helper);
+        f.atReady(() -> {
+            f.player.getAttribute(Attributes.MAX_HEALTH).setBaseValue(60);
+            RevivalManager.setHealthInternal(f.player, 60);
+            DamageSource source = f.player.damageSources().fall();
+            require(f.player.hurt(source, 120), "Scaled catastrophic fall rejected");
+            require(RevivalManager.isFinalized(f.player) && !f.player.isAlive(), "Scaled inclusive threshold did not bypass Door");
+            require(f.probe.finalDeaths == 1 && f.probe.deaths == 1 && f.probe.recapMaims == 0, "Bypass duplicated lifecycle or fabricated injury");
+            require(f.probe.finalSource == source, "Bypass lost original damage source");
+            close(DamageLedger.snapshot(f.player).applied(), 120, "Recap ledger lost accepted catastrophic damage");
+        });
+    }
+
+    @GameTest(template = "empty", timeoutTicks = 130)
+    public static void absorptionAndMitigationCanReduceFallBelowThreshold(GameTestHelper helper) {
+        Fixture f = new Fixture(helper);
+        f.atReady(() -> {
+            f.player.setAbsorptionAmount(10);
+            require(f.player.hurt(f.player.damageSources().fall(), 40), "Absorbed fall rejected");
+            require(f.player.isAlive() && RevivalManager.state(f.player).atDoor(), "Absorption was ignored by catastrophic threshold");
+            close(DamageLedger.snapshot(f.player).applied(), 30, "Accepted HP amount did not exclude absorption");
+            RevivalManager.state(f.player).clear();
+            RevivalManager.refresh(f.player); RevivalManager.setHealthInternal(f.player, f.player.getMaxHealth());
+            f.player.invulnerableTime = 0;
+            f.player.addEffect(new net.minecraft.world.effect.MobEffectInstance(net.minecraft.world.effect.MobEffects.DAMAGE_RESISTANCE, 100, 0));
+            require(f.player.hurt(f.player.damageSources().fall(), 40), "Mitigated fall rejected");
+            require(f.player.isAlive() && RevivalManager.state(f.player).atDoor(), "Resistance was ignored by catastrophic threshold");
+            require(f.probe.finalDeaths == 0, "Reduced falls ran final death");
+        });
+    }
+
+    @GameTest(template = "empty", timeoutTicks = 130)
+    public static void absorbedDoorDamageRefreshesHeartbeatButRejectedHitsDoNot(GameTestHelper helper) {
+        Fixture f = new Fixture(helper);
+        f.atReady(() -> {
+            long now = RevivalManager.now(f.player);
+            BodyState body = RevivalManager.state(f.player);
+            body.enterDoor(now - 601); RevivalManager.setHealthInternal(f.player, RevivalManager.SENTINEL);
+            require(body.heartbeatRemainingTicks(now) == 0, "Expired fixture not silent");
+            f.player.setAbsorptionAmount(4);
+            f.player.hurt(f.player.damageSources().generic(), 2);
+            require(body.heartbeatRemainingTicks(now) == 600 && body.activeMaims().isEmpty(), "Absorbed damaging hit failed to rearm sound without maiming");
+            body.refreshHeartbeat(now - 601);
+            f.player.hurt(f.player.damageSources().generic(), 2);
+            require(body.heartbeatRemainingTicks(now) == 0, "Hurt-immunity rejection restarted heartbeat");
+            f.player.invulnerableTime = 0; f.player.setInvulnerable(true);
+            f.player.hurt(f.player.damageSources().generic(), 4);
+            require(body.heartbeatRemainingTicks(now) == 0, "Invulnerable rejection restarted heartbeat");
+            f.player.setInvulnerable(false);
+            f.player.hurt(f.player.damageSources().generic(), 0);
+            require(body.heartbeatRemainingTicks(now) == 0, "Zero-loss hit restarted heartbeat");
+        });
+    }
+
     @GameTest(template = "empty", timeoutTicks = 150)
     public static void allHealingRejectsUntilTickFortyAndThenPreservesInjuries(GameTestHelper helper) {
         Fixture f = new Fixture(helper);
         helper.runAtTickTime(65, () -> {
             try {
-                require(f.player.hurt(f.player.damageSources().fall(), 100), "Entry damage was rejected");
+                require(f.player.hurt(f.player.damageSources().fall(), 25), "Entry damage was rejected");
                 long entered = RevivalManager.now(f.player);
                 f.player.heal(4);
                 require(RevivalManager.state(f.player).atDoor(), "heal() bypassed the healing lock");
@@ -131,7 +187,7 @@ public final class RevivalGameTests {
             for (int i = 0; i < 20; i++) body.addMaim(Region.LEFT_ARM, MaimType.CRACKED, RevivalManager.now(f.player));
             int before = body.activeMaims().size();
             f.player.invulnerableTime = 0;
-            require(f.player.hurt(f.player.damageSources().fall(), 1000), "Positive-HP lethal hit was rejected");
+            require(f.player.hurt(f.player.damageSources().generic(), 1000), "Positive-HP non-fall lethal hit was rejected");
             require(f.player.isAlive() && body.atDoor() && body.activeMaims().size() == before + 1, "Positive HP failed to protect against a death roll at certain injury risk");
             require(f.probe.deaths == 0, "Zero crossing at certain injury risk ran death listeners");
         });
@@ -143,7 +199,7 @@ public final class RevivalGameTests {
         f.atReady(() -> {
             f.player.experienceLevel = 7;
             f.player.setItemInHand(InteractionHand.OFF_HAND, new ItemStack(Items.TOTEM_OF_UNDYING));
-            require(f.player.hurt(f.player.damageSources().fall(), 100), "Entry hit was rejected");
+            require(f.player.hurt(f.player.damageSources().fall(), 25), "Entry hit was rejected");
             require(f.player.getOffhandItem().is(Items.TOTEM_OF_UNDYING), "Entry consumed a totem instead of entering Death's Door");
             for (int i = 0; i < 20; i++) RevivalManager.state(f.player).addMaim(Region.LEFT_ARM, MaimType.CRACKED, RevivalManager.now(f.player));
             f.player.invulnerableTime = 0;
@@ -299,7 +355,7 @@ public final class RevivalGameTests {
     public static void reloadPreservesDoorDeadlineMaimsTraumaAndTreatmentHistory(GameTestHelper helper) {
         Fixture f = new Fixture(helper);
         f.atReady(() -> {
-            f.player.hurt(f.player.damageSources().fall(), 100);
+            f.player.hurt(f.player.damageSources().fall(), 25);
             BodyState body = RevivalManager.state(f.player);
             body.addMaim(Region.LEFT_ARM, MaimType.OPENED, RevivalManager.now(f.player));
             body.cureOldest(Region.LEFT_ARM, MaimType.OPENED, "better_deaths_door:soocher", RevivalManager.now(f.player));

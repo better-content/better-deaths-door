@@ -8,7 +8,7 @@ import java.util.*;
 /** Compact current-life view. Historical totals remain in each region for the death recap. */
 public record BodyView(UUID playerId, String name, float health, float maxHealth, boolean atDoor,
         int healingLockTicks, int trauma, int traumaLifetimeTicks, double probability,
-        double multiplier, double treatmentSeconds, List<RegionView> regions, boolean treatmentActive) {
+        double multiplier, double treatmentSeconds, List<RegionView> regions, boolean treatmentActive, int heartbeatRemainingTicks) {
     public record RegionView(Region region, Map<MaimType, Integer> active, double reduction,
             Map<MaimType, Integer> treatedCounts) {
         public RegionView {
@@ -20,7 +20,10 @@ public record BodyView(UUID playerId, String name, float health, float maxHealth
         public int total() { return active.values().stream().mapToInt(Integer::intValue).sum(); }
         public int treated() { return treatedCounts.values().stream().mapToInt(Integer::intValue).sum(); }
     }
-    public BodyView { regions = List.copyOf(regions); }
+    public BodyView {
+        regions = List.copyOf(regions);
+        if (heartbeatRemainingTicks < 0 || heartbeatRemainingTicks > 600) throw new IllegalArgumentException("Invalid heartbeat window");
+    }
     public RegionView region(Region region) { return regions.get(region.ordinal()); }
 
     public static void write(BodyView view, FriendlyByteBuf buf) {
@@ -34,7 +37,7 @@ public record BodyView(UUID playerId, String name, float health, float maxHealth
             buf.writeDouble(region.reduction);
             for (MaimType type : MaimType.values()) buf.writeVarInt(region.treatedCount(type));
         }
-        buf.writeBoolean(view.treatmentActive);
+        buf.writeBoolean(view.treatmentActive); buf.writeVarInt(view.heartbeatRemainingTicks);
     }
 
     public static BodyView read(FriendlyByteBuf buf) {
@@ -52,7 +55,7 @@ public record BodyView(UUID playerId, String name, float health, float maxHealth
             regions.add(new RegionView(region, active, reduction, treated));
         }
         return new BodyView(id, name, health, max, door, lock, trauma, lifetime, odds,
-                multiplier, seconds, regions, buf.readBoolean());
+                multiplier, seconds, regions, buf.readBoolean(), buf.readVarInt());
     }
     private static int checkedCount(int count) {
         if (count < 0 || count > 1_000_000) throw new IllegalArgumentException("Invalid injury count");

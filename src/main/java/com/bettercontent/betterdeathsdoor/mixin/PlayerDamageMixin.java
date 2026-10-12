@@ -33,7 +33,7 @@ public abstract class PlayerDamageMixin {
                                          DamageSource enclosingSource, float mitigated) {
         float result = ForgeHooks.onLivingDamage(entity, source, unabsorbed);
         if (entity instanceof ServerPlayer player) DamageLedger.damaged(player, unabsorbed, result);
-        if (entity instanceof ServerPlayer player && mitigated > 0 && (result > 0 || unabsorbed == 0)) {
+        if (entity instanceof ServerPlayer player && (result > 0 || DamageLedger.absorbedInCurrentHit(player) > 0)) {
             RevivalManager.acceptedHit(player, source);
         }
         return result;

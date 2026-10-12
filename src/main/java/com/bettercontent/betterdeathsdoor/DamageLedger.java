@@ -13,12 +13,13 @@ public final class DamageLedger {
 
     private static final class Frame {
         final ServerPlayer player;
-        final float incoming, healthBefore, absorptionBefore;
+        final float incoming, healthBefore, maxHealthBefore, absorptionBefore;
         float admitted, unabsorbed, applied;
         boolean reachedDamage;
         Frame(ServerPlayer player, float incoming) {
             this.player = player; this.incoming = incoming;
-            healthBefore = player.getHealth(); absorptionBefore = player.getAbsorptionAmount();
+            healthBefore = player.getHealth(); maxHealthBefore = player.getMaxHealth();
+            absorptionBefore = player.getAbsorptionAmount();
         }
     }
 
@@ -63,6 +64,17 @@ public final class DamageLedger {
     public static void damaged(ServerPlayer player, float unabsorbed, float applied) {
         Frame frame = current(player);
         if (frame != null) { frame.unabsorbed = unabsorbed; frame.applied = applied; frame.reachedDamage = true; }
+    }
+    /** Accepted damage, captured before bodily modifiers can change maximum HP. */
+    public record AcceptedHit(float healthBefore, float maxHealthBefore, float hpDamage) {}
+    public static AcceptedHit acceptedHit(ServerPlayer player) {
+        Frame frame = current(player);
+        return frame == null || !frame.reachedDamage ? null
+            : new AcceptedHit(frame.healthBefore, frame.maxHealthBefore, frame.applied);
+    }
+    public static float absorbedInCurrentHit(ServerPlayer player) {
+        Frame frame = current(player);
+        return frame == null ? 0 : Math.max(0, frame.absorptionBefore - player.getAbsorptionAmount());
     }
     public static void finish(ServerPlayer player) {
         Deque<Frame> stack = FRAMES.get();

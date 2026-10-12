@@ -18,8 +18,12 @@ revival rule.
 Every zero crossing prevents all HP healing for 40 server ticks. Subsequent hits do not restart
 the lock. Healing afterward restores the ordinary HP buffer; injuries remain until treated.
 Totems do not prevent player death. Explicit special-kill sources, command kill, and void bypass
-Death’s Door. Vanilla blocking, armor, absorption, and hurt immunity still apply; this mod adds no
-maim cooldown. Absorption-only hits add trauma but do not maim.
+Death’s Door. A catastrophic fall also bypasses the Door when its final accepted HP damage, after
+mitigation and absorption, is at least twice the maximum HP captured immediately before that hit.
+This applies both above zero and at the Door; smaller falls retain the ordinary injury rules. A
+canceled final death preserves life without fabricating a maim for the catastrophic bypass.
+Vanilla blocking, armor, absorption, and hurt immunity still apply; this mod adds no maim cooldown.
+Absorption-only hits add trauma but do not maim.
 
 ## Injuries and trauma
 
@@ -35,6 +39,12 @@ The total caps at 100%; zero maims means zero maim-derived death probability.
 Every accepted hit adds one trauma stack for 1,200 server ticks, including damage absorbed by golden
 hearts. Stacks expire independently. Trauma scales functional injury effects from 50% at rest to
 100% with five stacks. Trauma does not change death probability.
+
+Heartbeat sound has a separate 600-tick (30-second) window. Entry and actual accepted HP or
+absorption damage at the Door restart it; blocked, canceled and zero-loss hits do not. Healing,
+confirmed death and respawn stop it. The server saves the deadline; reconnect/non-death clone
+resume only its remaining time. Old bodily saves without a deadline stay silent until another
+accepted hit or a new entry. Periodic state synchronization never grants a fresh window.
 
 Default full-strength penalties:
 
@@ -52,7 +62,10 @@ configured values used for presentation.
 The inventory has a **Mend** button with active injuries listed beneath it. Right-click another
 player within reach and line of sight to open a compact Mend view with their avatar and injuries.
 Opening either view only inspects; pressing **Mend** starts server-owned automatic care and the
-button then cancels it. The fixed queue treats arms, head, torso, and legs in that order, oldest
+button changes to **Cancel**. The Journal and teammate view share a percentage, progress bar and
+brief completion/cancellation/interruption status; unavailable/no-injury states disable starting
+care. Feedback is subject-bound and clears when closing or changing the viewed body. The fixed
+queue treats arms, head, torso, and legs in that order, oldest
 injury first within each region. Treating arms first reduces later self-care time. No item is
 required or consumed. Damage, closing the view, losing reach or sight, and disconnecting interrupt
 treatment. Each completed step remains in treatment history.
@@ -81,7 +94,13 @@ continues owning its colored containers and layout. Without Mantle, or with its 
 the Forge renderer hooks provide the same semantic-zero presentation. Absorption hearts remain
 independent: zero ordinary HP does not remove earned absorption or empty/max-health containers.
 Missing synchronized injury state never causes a guessed zero-health override. Active maims appear as marks on exposed skin or over armor in
-the world and on inventory avatars. The inventory and teammate views show active injuries; the
+the world and on inventory avatars. The optional Epic Fight 20.14.17 bridge replaces only the
+maim layer's native fallback, using posed native skin and armor meshes with region/joint masks;
+vanilla rendering retains its own layer. Native outer-clothing UVs are mapped to the existing
+base-skin mark islands, and native 64×32 armor UVs are normalized to the 64×64 mark textures.
+Shared mesh visibility is restored after every draw. Pinned mesh triangles and authored PNG alpha
+coverage test both standard/slim skin and native armor mappings; source gates are not pixel acceptance.
+The inventory and teammate views show active injuries; the
 final-death recap retains active and treated totals. A confirmed failed death roll plays its own
 sound; surviving zero crossings do not show a final recap.
 
@@ -233,6 +252,8 @@ screenshots are not evidence of audible sound quality or audio balance.
 `InjuryApi` exposes read-only server injury counts, semantic HP, Death’s Door state, and snapshots.
 `InjuryEvent` publishes committed entry, healing exit, maim, treatment, and final-death changes.
 Client packets contain bounded active and treated counts, not authoritative mutation decisions.
+Network protocol **8** includes the remaining heartbeat ticks and typed subject-bound treatment
+status; client and server must update together.
 
 RPG Stats and Configurable Death retain final-death ownership. Surviving an episode does not run
 their final-death consequences. Depth Director scales reinforcement cadence by active injuries;

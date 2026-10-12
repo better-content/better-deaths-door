@@ -15,6 +15,8 @@ public final class BodyState {
     public static final String ROOT_TAG = "better_deaths_door:body";
     private boolean atDoor;
     private long healingLockedUntil;
+    public static final int HEARTBEAT_WINDOW_TICKS = 600;
+    private long heartbeatUntil;
     private long nextMaimId = 1;
     private final List<Maim> activeMaims = new ArrayList<>();
     private final List<TreatmentRecord> treatmentHistory = new ArrayList<>();
@@ -23,6 +25,11 @@ public final class BodyState {
     public boolean atDoor() { return atDoor; }
     public long healingLockedUntil() { return healingLockedUntil; }
     public boolean healingLocked(long now) { return atDoor && now < healingLockedUntil; }
+    public int heartbeatRemainingTicks(long now) {
+        return atDoor ? (int) Math.max(0, Math.min(HEARTBEAT_WINDOW_TICKS, heartbeatUntil - now)) : 0;
+    }
+    /** Called only after native damage admission established actual HP or absorption loss. */
+    public void refreshHeartbeat(long now) { if (atDoor) heartbeatUntil = now + HEARTBEAT_WINDOW_TICKS; }
     public List<Maim> activeMaims() { return List.copyOf(activeMaims); }
     public List<TreatmentRecord> treatmentHistory() { return List.copyOf(treatmentHistory); }
     public List<Long> traumaExpiries() { return List.copyOf(traumaExpiries); }
@@ -33,8 +40,9 @@ public final class BodyState {
         if (atDoor) return;
         atDoor = true;
         healingLockedUntil = now + tuning.healingLockTicks();
+        refreshHeartbeat(now);
     }
-    public void exitDoor() { atDoor = false; healingLockedUntil = 0; }
+    public void exitDoor() { atDoor = false; healingLockedUntil = 0; heartbeatUntil = 0; }
     /** Call only for a real positive healing attempt. */
     public boolean tryHeal(long now) {
         if (healingLocked(now)) return false;
@@ -85,13 +93,14 @@ public final class BodyState {
     }
     public BodyState copy() {
         BodyState copy = new BodyState();
-        copy.atDoor = atDoor; copy.healingLockedUntil = healingLockedUntil; copy.nextMaimId = nextMaimId;
+        copy.atDoor = atDoor; copy.healingLockedUntil = healingLockedUntil; copy.heartbeatUntil = heartbeatUntil; copy.nextMaimId = nextMaimId;
         copy.activeMaims.addAll(activeMaims); copy.treatmentHistory.addAll(treatmentHistory); copy.traumaExpiries.addAll(traumaExpiries);
         return copy;
     }
     public CompoundTag save() {
         CompoundTag tag = new CompoundTag();
         tag.putInt("version", 1); tag.putBoolean("atDoor", atDoor); tag.putLong("healingLockedUntil", healingLockedUntil);
+        tag.putLong("heartbeatUntil", heartbeatUntil);
         tag.putLong("nextMaimId", nextMaimId);
         ListTag maims = new ListTag();
         for (Maim m : activeMaims) { CompoundTag entry = entry(m.id(), m.region(), m.type(), m.tick()); maims.add(entry); }
@@ -112,6 +121,7 @@ public final class BodyState {
     public static BodyState load(CompoundTag tag, long now) {
         BodyState state = new BodyState();
         state.atDoor = tag.getBoolean("atDoor"); state.healingLockedUntil = tag.getLong("healingLockedUntil");
+        state.heartbeatUntil = state.atDoor ? tag.getLong("heartbeatUntil") : 0;
         state.nextMaimId = Math.max(1, tag.getLong("nextMaimId"));
         for (Tag raw : tag.getList("activeMaims", Tag.TAG_COMPOUND)) {
             CompoundTag entry = (CompoundTag) raw;
