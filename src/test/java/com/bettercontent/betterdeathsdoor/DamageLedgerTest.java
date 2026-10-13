@@ -23,6 +23,17 @@ class DamageLedgerTest {
         assertEquals(0, result.unknown());
     }
 
+    @Test void semanticDoorHpExcludesSentinelAtEntryAndFinalHit() {
+        double total = 0;
+        for (int i = 0; i < 5; i++) total += DamageLedger.semanticHpLoss(25, 20, RevivalManager.SENTINEL, false, true);
+        assertEquals(100, total);
+        assertEquals(0, DamageLedger.semanticHpLoss(100, RevivalManager.SENTINEL, 0, true, true));
+        assertEquals(0, DamageLedger.semanticHpLoss(100, RevivalManager.SENTINEL, 0, true, false));
+        assertEquals(2, DamageLedger.semanticHpLoss(2, 20, 18, false, false));
+        assertEquals(0, DamageLedger.semanticHpLoss(0, 20, 10, false, false));
+        assertEquals(2, DamageLedger.semanticHpLoss(2, 20, 10, false, false));
+    }
+
     @Test void aRepeatedDeathEventCannotBeRepresentedAsTheSameHit() {
         var once = DamageLedger.accountHit(DamageLedger.Summary.empty(), 5, 5, 5, 5, 0, 0, 1, 0);
         var twice = DamageLedger.accountHit(once, 5, 5, 5, 5, 0, 0, 1, 0);

@@ -203,6 +203,11 @@ val verifyRuntimeRefmap by tasks.registering {
                 "net.minecraft.client.gui.components.toasts.ToastComponent\$ToastInstance" to "net/minecraft/client/gui/components/toasts/ToastComponent\$ToastInstance",
                 "Lnet/minecraft/Util;getMillis()J" to "m_137550_", "render" to "m_280442_"),
             "ServerDeathMixin" to mapOf("die" to "m_6667_"),
+            "LifePlacementMixin" to mapOf("place" to "m_40576_"),
+            "LifeNativeStatsMixin" to mapOf("setValue" to "m_6085_"),
+            "LifeNativePlayerMixin" to mapOf("eat" to "m_5584_", "giveExperiencePoints" to "m_6756_", "giveExperienceLevels" to "m_6749_"),
+            "LifeNativeServerPlayerMixin" to mapOf("setExperienceLevels" to "m_9174_", "setExperiencePoints" to "m_8985_",
+                "setGameMode" to "m_143403_", "giveExperienceLevels" to "m_6749_"),
             "DeathCauseAccessor" to mapOf("causeOfDeath" to "f_95907_"),
             "ToastVisibilityMixin" to mapOf("render" to "m_94920_"),
             "PlayerDamageMixin" to mapOf("actuallyHurt" to "m_6475_",
@@ -213,7 +218,7 @@ val verifyRuntimeRefmap by tasks.registering {
                 "Lnet/minecraft/world/item/enchantment/EnchantmentHelper;getDamageBonus(Lnet/minecraft/world/item/ItemStack;Lnet/minecraft/world/entity/MobType;)F" to "m_44833_",
                 "Lnet/minecraft/world/entity/LivingEntity;hurt(Lnet/minecraft/world/damagesource/DamageSource;F)Z" to "m_6469_")
         )
-        val unmappedNative = setOf("EpicColliderMixin", "EpicPhaseMixin", "EpicReachMixin", "ForgeHealthMixin")
+        val unmappedNative = setOf("EpicColliderMixin", "EpicPhaseMixin", "EpicReachMixin", "ForgeHealthMixin", "LifeForgePlacementMixin")
         val namespace = "com.bettercontent.betterdeathsdoor.mixin"
         ZipFile(runtimeJar.get().asFile).use { zip ->
             fun json(name: String): Map<*, *> {
@@ -231,6 +236,9 @@ val verifyRuntimeRefmap by tasks.registering {
             val prefix = namespace.replace('.', '/') + "/"
             registered.forEach { check(zip.getEntry(prefix + it + ".class") != null) { "Registered runtime mixin $it is missing" } }
             check(zip.getEntry("better_deaths_door.heart-review.refmap.json") == null) { "Review-only refmap leaked into production" }
+            listOf("heartreview/LifeVisualReview", "heartreview/LifeVisualClient", "review/DeathPresentationObservation").forEach {
+                check(zip.getEntry("com/bettercontent/betterdeathsdoor/$it.class") == null) { "Life-review fixture leaked into production: $it" }
+            }
             val manifest = zip.getEntry("META-INF/MANIFEST.MF") ?: throw GradleException("Runtime manifest is missing")
             val configs = zip.getInputStream(manifest).use { JarManifest(it) }.mainAttributes.getValue("MixinConfigs")
             check(configs?.split(',')?.map(String::trim)?.contains("better_deaths_door.mixins.json") == true)

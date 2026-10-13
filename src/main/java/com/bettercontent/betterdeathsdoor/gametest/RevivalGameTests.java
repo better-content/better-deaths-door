@@ -6,6 +6,8 @@ import com.bettercontent.betterdeathsdoor.RevivalManager;
 import com.bettercontent.betterdeathsdoor.RevivalMod;
 import com.bettercontent.betterdeathsdoor.api.event.InjuryEvent;
 import com.bettercontent.betterdeathsdoor.state.*;
+import com.bettercontent.betterdeathsdoor.records.LifeMetric;
+import com.bettercontent.betterdeathsdoor.records.LifeRecordsData;
 import com.mojang.authlib.GameProfile;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
@@ -51,6 +53,8 @@ public final class RevivalGameTests {
             require(f.probe.deaths == 0 && f.probe.finalDeaths == 0 && f.player.experienceLevel == 7, "Surviving entry ran final-death consequences");
             require(!f.player.getPersistentData().contains("better_deaths_door:recap"), "Surviving zero crossing created a final-death recap");
             require(DamageLedger.snapshot(f.player).hits() == 1, "Surviving hit was not counted once in this life");
+            close(metric(f.player, LifeMetric.DOOR_ENTRIES), 1, "True entry was not recorded exactly once");
+            close(metric(f.player, LifeMetric.CHECKS_SURVIVED), 0, "Entry incorrectly counted as a postentry survived check");
         });
     }
 
@@ -107,6 +111,8 @@ public final class RevivalGameTests {
             f.player.setInvulnerable(false);
             f.player.hurt(f.player.damageSources().generic(), 0);
             require(body.heartbeatRemainingTicks(now) == 0, "Zero-loss hit restarted heartbeat");
+            close(metric(f.player, LifeMetric.CHECKS_SURVIVED), 0, "Absorbed, rejected or zero-HP hits created survived check awards");
+            close(metric(f.player, LifeMetric.DOOR_ENTRIES), 0, "A fixture setter or absorbed hit created a true entry award");
         });
     }
 
@@ -190,6 +196,8 @@ public final class RevivalGameTests {
             require(f.player.hurt(f.player.damageSources().generic(), 1000), "Positive-HP non-fall lethal hit was rejected");
             require(f.player.isAlive() && body.atDoor() && body.activeMaims().size() == before + 1, "Positive HP failed to protect against a death roll at certain injury risk");
             require(f.probe.deaths == 0, "Zero crossing at certain injury risk ran death listeners");
+            close(metric(f.player, LifeMetric.CHECKS_SURVIVED), 1, "Zero-maim postentry accepted HP check was not recorded exactly once");
+            close(metric(f.player, LifeMetric.DOOR_ENTRIES), 1, "Positive-HP zero crossing did not record a true entry");
         });
     }
 
@@ -321,6 +329,7 @@ public final class RevivalGameTests {
                     require(RevivalManager.state(f.player).activeMaims().size() == 1, "Interrupted treatment silently completed");
                     require(RevivalManager.state(f.player).treatmentHistory().isEmpty(), "Interrupted treatment wrote history");
                     require(f.player.getInventory().isEmpty(), "Interrupted treatment changed inventory");
+                    close(metric(f.player, LifeMetric.INJURIES_TREATED), 0, "Interrupted treatment generated an injury-removal award");
                 }));
             } catch (Throwable failure) { f.fail(failure); }
         });
@@ -344,6 +353,8 @@ public final class RevivalGameTests {
                         require(RevivalManager.state(subject.player).activeMaims().isEmpty(), "Concurrent treatment failed to cure");
                         require(RevivalManager.state(subject.player).treatmentHistory().size() == 1, "Concurrent treatment wrote duplicate history");
                         require(subject.player.getInventory().isEmpty() && teammate.player.getInventory().isEmpty(), "Concurrent treatment changed inventory");
+                        close(metric(subject.player, LifeMetric.INJURIES_TREATED), 1, "Committed concurrent cure did not count once on the subject");
+                        close(metric(teammate.player, LifeMetric.INJURIES_TREATED), 0, "Teammate cure incorrectly counted the subject injury on the healer");
                         teammate.cleanup(); subject.finish(() -> { });
                     } catch (Throwable failure) { teammate.cleanup(); subject.fail(failure); }
                 });
@@ -412,6 +423,9 @@ public final class RevivalGameTests {
         });
     }
 
+    private static double metric(ServerPlayer player, LifeMetric metric) {
+        return LifeRecordsData.get(player.server).find(player.getUUID()).value(metric);
+    }
     private static void require(boolean condition, String message) { if (!condition) throw new AssertionError(message); }
     private static void close(double actual, double expected, String message) { require(Math.abs(actual - expected) < .00001, message + " (expected " + expected + ", got " + actual + ")"); }
 

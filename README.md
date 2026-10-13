@@ -81,6 +81,77 @@ damage is measured before armor and resistance after shield and hurt-immunity ad
 separates observed mitigation, absorption, applied damage and actual HP loss; hook changes or other
 unattributed remainder is labeled unknown. There is no lineage integration.
 
+## Current-world life records and death presentation
+
+The Overworld owns a versioned `SavedData` ledger per player UUID: one current life,
+completed-life bests, reached milestone tiers and the latest frozen recap. It is not an
+unlimited history, a lineage transport, or a reward system. New players have a fully
+measured life; an existing player first observed without a ledger has a labeled partial
+life. Partial lives summarize observed activity but award no bests or milestones. The
+next ordinary death-respawn begins a full life. Reconnects, restarts, dimensions and
+non-death clones retain the current life; successor worlds do not carry the ledger.
+
+Only alive, ticking Survival activity outside Arena matches accrues counters. Spectator
+suspends measurement; Creative or Adventure invalidates that life's awards. Arena Trials
+registers typed native membership/collection predicates into Door. Arena-contained death
+retains the ordinary life through native return; terminal match activity remains suspended
+through that server tick. There is no reverse Door dependency on Arena, kit inference or
+persistent-tag guess.
+
+| Metric | Native committed observation | Milestones |
+| --- | --- | --- |
+| Duration | Eligible server ticks, excluding pauses/offline time | 24,000 / 72,000 / 168,000 ticks |
+| Highest level | Maximum native XP level, including pre-clear death capture | 10 / 20 / 30 |
+| Mob kills | Credited non-player mob-kill statistic increments | 10 / 50 / 100 |
+| Blocks placed | Successful BlockItem transactions after Forge rollback/cancellation; multiblock once | 100 / 500 / 1,000 |
+| Blocks mined | Native mined-block statistic increments | 100 / 500 / 1,000 |
+| Food replenishment | Positive hunger-point delta inside completed edible-item consumption, not saturation | 50 / 250 / 500 haunches |
+| Damage endured | Accepted HP lost, clipped to available HP; internal semantic-zero sentinel is not HP | 50 / 250 / 500 hearts |
+| Door checks survived | Post-entry accepted HP-consuming checks ending alive, excluding entry and absorption-only hits | 1 / 5 / 10 |
+| Door entries | Actual transitions into the Door | 1 / 5 / 10 |
+| Injuries treated | Successfully completed native cures on the subject, not attempted care | 1 / 5 / 10 |
+
+Raw hunger/HP points and ticks are persisted. Each milestone is announced once per
+player/world, from an eligible full life, on accepted finalization; only the highest new
+tier per metric is displayed. Cancellation does not finalize a life. Frozen counters and
+old bests are compared before updating aggregates; repeated finalization returns the same
+life-ID snapshot. Corrupt/unsupported record payloads are diagnosed and reset without
+altering inventory, body state or inventing past bests.
+
+At most three cards are selected deterministically: beaten established bests by relative
+improvement, unrepresented new milestones, matched/near nonzero bests at least 90% complete,
+then positive first baselines by first-milestone progress. Fixed metric order breaks ties;
+metric badges merge. Partial/ineligible lives and lives without qualifying cards use a
+neutral explanation, not fabricated achievements.
+
+The death screen begins with cause, a compact life/body summary and graphical comparison
+cards. **Details** exposes the complete damage/body recap and all ten metric totals;
+**Summary** returns without replaying the reveal. Door owns the content viewport, scrollbar,
+hint reservation and native-control positions. Discovery Guides measures/wraps its hint
+into that viewport and does not credit clipped/hidden copy as exposure. Content may scroll;
+the original native Respawn/Title handlers and enable delay remain untouched.
+
+A monotonic clock starts on the first rendered frame of each actual DeathScreen. Cause,
+backdrop and native actions are immediate. Summary and Details appear at 150 ms; cards
+follow at 300/450/600 ms and the hint follows the final card by 150 ms (three cards finish
+at 750 ms). A neutral empty state uses one card stage. These are discrete draws, not fades,
+slides or per-element sounds. Space is reserved before revealing; resize, duplicate/late
+packets and Details navigation do not restart timing. The first immutable selection wins
+for the episode. Closing/respawning clears presentation; reduced motion reveals immediately.
+The existing sound preference remains independent.
+
+Pure clock/layout tests cover boundaries, late data, reduced motion, Details, episode
+reset and narrow scrolling. Native GameTests cover committed counters, partial/bootstrap,
+canceled/final/arena deaths, clones, persistence, food, statistics, placements and owner
+hooks. These do not establish human pointer acceptance or full-pack visual acceptance.
+The separate `injuryVisual` review support includes `LifeVisualReview`/`LifeVisualClient`:
+with `-Dlife.review.root=ISOLATED_ROOT`, it prepares bounded one-player ledger scenes,
+uses real final-death/respawn packets and records timestamped production framebuffers.
+Details is API-prepared by a nonshipping accessor, explicitly not a pointer test. Run
+wide/narrow/reduced-motion as separate fixed-startup clients, never synthetic resizing.
+Review every claimed acceptance image and dispose of worlds/evidence at handoff under the
+shared maintenance policy. The support classes, accessor and fixtures never ship.
+
 ## Presentation and console review
 
 Skull marks on the heart bar represent the server’s maim-derived death probability. They remain
@@ -252,8 +323,8 @@ screenshots are not evidence of audible sound quality or audio balance.
 `InjuryApi` exposes read-only server injury counts, semantic HP, Death’s Door state, and snapshots.
 `InjuryEvent` publishes committed entry, healing exit, maim, treatment, and final-death changes.
 Client packets contain bounded active and treated counts, not authoritative mutation decisions.
-Network protocol **8** includes the remaining heartbeat ticks and typed subject-bound treatment
-status; client and server must update together.
+Network protocol **9** retains the heartbeat and subject-bound treatment status and adds
+bounded, immutable life-recap packet ID **5**; client and server must update together.
 
 RPG Stats and Configurable Death retain final-death ownership. Surviving an episode does not run
 their final-death consequences. Depth Director scales reinforcement cadence by active injuries;

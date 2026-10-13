@@ -9,7 +9,7 @@ import net.minecraftforge.network.simple.SimpleChannel;
 import java.util.*;
 
 public final class RevivalNetwork {
-    private static final String PROTOCOL = "8";
+    private static final String PROTOCOL = "9";
     public static final SimpleChannel CHANNEL = NetworkRegistry.newSimpleChannel(
             new ResourceLocation(RevivalMod.MOD_ID, "main"), () -> PROTOCOL,
             PROTOCOL::equals, PROTOCOL::equals);
@@ -27,6 +27,8 @@ public final class RevivalNetwork {
                 MaimSyncPacket::decode, MaimSyncPacket::handle, Optional.of(NetworkDirection.PLAY_TO_CLIENT));
         CHANNEL.registerMessage(4, TreatmentStatusPacket.class, TreatmentStatusPacket::encode,
                 TreatmentStatusPacket::decode, TreatmentStatusPacket::handle, Optional.of(NetworkDirection.PLAY_TO_CLIENT));
+        CHANNEL.registerMessage(5, LifeRecapPacket.class, LifeRecapPacket::encode,
+                LifeRecapPacket::decode, LifeRecapPacket::handle, Optional.of(NetworkDirection.PLAY_TO_CLIENT));
     }
     public static boolean canInspect(ServerPlayer viewer, ServerPlayer subject) {
         return RevivalManager.validTreatmentTarget(viewer, subject);

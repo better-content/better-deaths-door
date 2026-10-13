@@ -14,12 +14,14 @@ public final class DamageLedger {
     private static final class Frame {
         final ServerPlayer player;
         final float incoming, healthBefore, maxHealthBefore, absorptionBefore;
+        final boolean atDoorBefore;
         float admitted, unabsorbed, applied;
-        boolean reachedDamage;
+        boolean reachedDamage, committed;
         Frame(ServerPlayer player, float incoming) {
             this.player = player; this.incoming = incoming;
             healthBefore = player.getHealth(); maxHealthBefore = player.getMaxHealth();
             absorptionBefore = player.getAbsorptionAmount();
+            atDoorBefore = RevivalManager.state(player).atDoor();
         }
     }
 
@@ -81,11 +83,29 @@ public final class DamageLedger {
         if (stack.isEmpty()) return;
         Frame frame = stack.pop();
         if (stack.isEmpty()) FRAMES.remove();
-        if (frame.player != player || !frame.reachedDamage) return;
+        if (frame.player != player) return;
+        commit(player, frame);
+    }
+    /** FinalDeath occurs inside actuallyHurt, before its RETURN hook. Commit lethal damage once. */
+    public static void commitCurrent(ServerPlayer player) {
+        Frame frame = current(player); if (frame != null) commit(player, frame);
+    }
+    private static void commit(ServerPlayer player, Frame frame) {
+        if (!frame.reachedDamage || frame.committed) return;
+        frame.committed = true;
+        double lost = semanticHpLoss(frame.applied, frame.healthBefore, player.getHealth(), frame.atDoorBefore, RevivalManager.state(player).atDoor());
+        com.bettercontent.betterdeathsdoor.records.LifeRecords.acceptedHpLoss(player, lost);
         Summary old = snapshot(player);
         Summary next = accountHit(old, frame.incoming, frame.admitted, frame.unabsorbed, frame.applied,
             frame.absorptionBefore, player.getAbsorptionAmount(), frame.healthBefore, player.getHealth());
         player.getPersistentData().put(KEY, next.save());
+    }
+    /** Records use real bodily HP; the internal Door sentinel is neither HP lost nor HP remaining. */
+    static double semanticHpLoss(float accepted, float before, float after, boolean beforeDoor, boolean afterDoor) {
+        if (!Float.isFinite(accepted) || !Float.isFinite(before) || !Float.isFinite(after)) return 0;
+        double bodilyBefore = beforeDoor ? 0 : Math.max(0, before);
+        double bodilyAfter = afterDoor ? 0 : Math.max(0, after);
+        return Math.min(Math.max(0, accepted), Math.max(0, bodilyBefore - bodilyAfter));
     }
     private static Frame current(ServerPlayer player) {
         Deque<Frame> stack = FRAMES.get();

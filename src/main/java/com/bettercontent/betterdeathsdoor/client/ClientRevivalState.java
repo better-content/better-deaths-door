@@ -91,9 +91,10 @@ public final class ClientRevivalState {
     }
     public static void tick(Minecraft mc) {
         if (mc.player == null) { STATES.clear(); VISUALS.clear(); return; }
-        if (recap != null && !mc.player.isAlive()) recapWasDead = true;
+        if ((recap != null || ClientLifeRecords.latest() != null) && !mc.player.isAlive()) recapWasDead = true;
         if (recapWasDead && mc.player.isAlive()) {
             recap = null; recapDamage = DamageLedger.Summary.empty(); recapWasDead = false;
+            ClientLifeRecords.clear(); DeathRecapOverlay.reset();
         }
         if (captureDelay >= 0 && --captureDelay == 0) {
             Screenshot.grab(mc.gameDirectory, captureLabel + ".png", mc.getMainRenderTarget(),
@@ -105,5 +106,6 @@ public final class ClientRevivalState {
         STATES.clear(); VISUALS.clear(); recap = null;
         recapDamage = DamageLedger.Summary.empty(); recapWasDead = false;
         captureDelay = -1; captureLabel = null; MendUi.clear(); RevivalHud.reset();
+        ClientLifeRecords.clear(); DeathRecapOverlay.reset();
     }
 }

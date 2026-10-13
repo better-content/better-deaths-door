@@ -15,7 +15,9 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 public abstract class ServerDeathMixin {
     @Inject(method = "die", at = @At("HEAD"), cancellable = true)
     private void revival$onlyOneDeath(DamageSource source, CallbackInfo ci) {
-        if (RevivalManager.isFinalized((ServerPlayer) (Object) this)) ci.cancel();
+        ServerPlayer player = (ServerPlayer) (Object) this;
+        if (RevivalManager.isFinalized(player)) ci.cancel();
+        else com.bettercontent.betterdeathsdoor.records.LifeRecords.beginDeath(player);
     }
 
     @Redirect(method = "die", at = @At(value = "INVOKE", target = "Lnet/minecraftforge/common/ForgeHooks;onLivingDeath(Lnet/minecraft/world/entity/LivingEntity;Lnet/minecraft/world/damagesource/DamageSource;)Z", remap = false))

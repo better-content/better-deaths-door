@@ -10,6 +10,11 @@
     "PlayerMeleeBonusMixin",
     "LivingHealthMixin",
     "ServerDeathMixin",
+    "LifeNativePlayerMixin",
+    "LifeNativeServerPlayerMixin",
+    "LifeNativeStatsMixin",
+    "LifePlacementMixin",
+    "LifeForgePlacementMixin",
     "EpicColliderMixin",
     "EpicPhaseMixin",
     "EpicReachMixin"

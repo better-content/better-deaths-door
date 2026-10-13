@@ -1,5 +1,17 @@
 {
   "item.better_deaths_door.balm": "Balm",
   "item.better_deaths_door.soocher": "Soocher",
-  "subtitles.better_deaths_door.downed_whisper": "A life tether whispers"
+  "subtitles.better_deaths_door.downed_whisper": "A life tether whispers",
+  "screen.better_deaths_door.details": "Details",
+  "screen.better_deaths_door.summary": "Summary",
+  "record.better_deaths_door.duration": "Life duration",
+  "record.better_deaths_door.xp_level": "Highest level",
+  "record.better_deaths_door.mob_kills": "Mobs defeated",
+  "record.better_deaths_door.blocks_placed": "Blocks placed",
+  "record.better_deaths_door.blocks_mined": "Blocks mined",
+  "record.better_deaths_door.hunger_restored": "Food replenishment",
+  "record.better_deaths_door.hp_lost": "Damage endured",
+  "record.better_deaths_door.checks_survived": "Door checks survived",
+  "record.better_deaths_door.door_entries": "Door entries",
+  "record.better_deaths_door.injuries_treated": "Injuries treated"
 }

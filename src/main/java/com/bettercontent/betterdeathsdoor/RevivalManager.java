@@ -1,6 +1,8 @@
 package com.bettercontent.betterdeathsdoor;
 
 import com.bettercontent.betterdeathsdoor.api.event.InjuryEvent;
+import com.bettercontent.betterdeathsdoor.records.LifeRecords;
+import com.bettercontent.betterdeathsdoor.records.LifeMetric;
 import com.bettercontent.betterdeathsdoor.network.RevivalNetwork;
 import com.bettercontent.betterdeathsdoor.state.*;
 import net.minecraft.core.registries.Registries;
@@ -126,7 +128,10 @@ public final class RevivalManager {
         }
         setHealthInternal(p, SENTINEL);
         save(p); DIRTY.add(p); applyModifiers(p);
-        if (result == BodyState.HitResult.ENTERED_DOOR) MinecraftForge.EVENT_BUS.post(new InjuryEvent.EnteredDoor(p, snapshot(p), source));
+        if (result == BodyState.HitResult.ENTERED_DOOR) {
+            LifeRecords.add(p, LifeMetric.DOOR_ENTRIES, 1);
+            MinecraftForge.EVENT_BUS.post(new InjuryEvent.EnteredDoor(p, snapshot(p), source));
+        } else if (hit != null && hit.hpDamage() > 0) LifeRecords.add(p, LifeMetric.CHECKS_SURVIVED, 1);
         Maim maim = body.activeMaims().get(body.activeMaims().size() - 1);
         announceMaim(p, maim);
     }
@@ -217,6 +222,7 @@ public final class RevivalManager {
     }
     public static void tick(MinecraftServer server) {
         for (ServerPlayer p : server.getPlayerList().getPlayers()) {
+            LifeRecords.tick(p);
             if (isFinalized(p)) continue;
             boolean expired = state(p).expireTrauma(now(p));
             if (expired) save(p);
@@ -288,6 +294,7 @@ public final class RevivalManager {
             return;
         }
         TreatmentRecord record = state(subject).cureOldest(treatment.region, treatment.type, HANDS_ON_CARE, now(subject)).orElseThrow();
+        LifeRecords.add(subject, LifeMetric.INJURIES_TREATED, 1);
         save(subject); refresh(subject);
         subject.level().playSound(null, subject, SoundEvents.ARMOR_EQUIP_LEATHER, SoundSource.PLAYERS, .65f, .85f);
         MinecraftForge.EVENT_BUS.post(new InjuryEvent.Treated(subject, snapshot(subject), healer, record));
@@ -303,6 +310,8 @@ public final class RevivalManager {
 
     public static void finalDeath(ServerPlayer p, DamageSource source) {
         if (isFinalized(p)) return;
+        DamageLedger.commitCurrent(p);
+        LifeRecords.finalDeath(p);
         BodySnapshot recap = snapshot(p);
         CompoundTag saved = new CompoundTag(); saved.put("body", state(p).save()); saved.putLong("tick", recap.serverTick());
         saved.putFloat("maxHealth", recap.maxHealth()); saved.put("tuning", saveTuning(recap.tuning()));
@@ -321,6 +330,7 @@ public final class RevivalManager {
         MinecraftForge.EVENT_BUS.post(new InjuryEvent.FinalDeath(p, recap, source));
     }
     public static void canceledDeath(ServerPlayer p) {
+        LifeRecords.canceledDeath(p);
         TERMINATING.remove(p);
         PendingRolledMaim pending = PENDING_ROLLED_MAIMS.remove(p);
         Float previousHealth = CATASTROPHIC_HEALTH.remove(p);
@@ -332,6 +342,8 @@ public final class RevivalManager {
         if (state(p).atDoor() && p.getHealth() <= 0) setHealthInternal(p, SENTINEL);
         if (pending != null && !isFinalized(p)) {
             // A canceled final-death event survived this accepted hit: its consequence is still guaranteed.
+            DamageLedger.AcceptedHit accepted = DamageLedger.acceptedHit(p);
+            if (accepted != null && accepted.hpDamage() > 0) LifeRecords.add(p, LifeMetric.CHECKS_SURVIVED, 1);
             Maim maim = state(p).addMaim(pending.region(), pending.type(), now(p));
             DIRTY.remove(p);
             save(p);
@@ -340,6 +352,7 @@ public final class RevivalManager {
         }
     }
     public static void sendRecap(ServerPlayer p) {
+        LifeRecords.sendRecap(p);
         CompoundTag tag = p.getPersistentData().getCompound(RECAP);
         if (tag.isEmpty()) return;
         long tick = tag.getLong("tick");
@@ -358,8 +371,9 @@ public final class RevivalManager {
             tag.getDouble("v4"), tag.getDouble("v5"), tag.getDouble("v6"), tag.getDouble("v7"), tag.getDouble("v8"),
             tag.getDouble("v9"), tag.getDouble("v10"), tag.getInt("healing"), tag.getInt("trauma"));
     }
-    public static void login(ServerPlayer p) { refresh(p); if (isFinalized(p)) sendRecap(p); }
+    public static void login(ServerPlayer p) { LifeRecords.login(p); refresh(p); if (isFinalized(p)) sendRecap(p); }
     public static void logout(ServerPlayer p) {
+        LifeRecords.logout(p);
         interruptParticipant(p, "Treatment interrupted: player disconnected"); RevivalNetwork.closeBody(p);
         if (!isFinalized(p)) save(p);
         STATES.remove(p); DIRTY.remove(p); HEALED.remove(p); TERMINATING.remove(p); PENDING_ROLLED_MAIMS.remove(p); CATASTROPHIC_HEALTH.remove(p);
@@ -367,13 +381,14 @@ public final class RevivalManager {
     public static void clonePlayer(ServerPlayer old, ServerPlayer replacement, boolean death) {
         STATES.remove(replacement);
         DamageLedger.cloneLife(old, replacement, death);
+        LifeRecords.clonePlayer(old, replacement, death);
         replacement.getPersistentData().remove(RECAP); replacement.getPersistentData().remove(FINALIZED);
         if (death) { replacement.getPersistentData().remove(BodyState.ROOT_TAG); STATES.put(replacement, new BodyState()); }
         else { STATES.put(replacement, state(old).copy()); save(replacement); }
         STATES.remove(old); TERMINATING.remove(old); PENDING_ROLLED_MAIMS.remove(old); CATASTROPHIC_HEALTH.remove(old); DIRTY.remove(old); HEALED.remove(old);
         refresh(replacement);
     }
-    public static void shutdown() { STATES.clear(); DIRTY.clear(); HEALED.clear(); TERMINATING.clear(); PENDING_ROLLED_MAIMS.clear(); CATASTROPHIC_HEALTH.clear(); TREATMENTS.clear(); RevivalNetwork.clear(); }
+    public static void shutdown() { LifeRecords.shutdown(); STATES.clear(); DIRTY.clear(); HEALED.clear(); TERMINATING.clear(); PENDING_ROLLED_MAIMS.clear(); CATASTROPHIC_HEALTH.clear(); TREATMENTS.clear(); RevivalNetwork.clear(); }
 
     /** Explicit admin fixture command; callers restrict this to isolated review players. */
     public static void debugScenario(ServerPlayer p, String fixture) {
