@@ -9,7 +9,6 @@ import net.minecraft.client.Screenshot;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.DeathScreen;
 import net.minecraftforge.api.distmarker.Dist;
-import net.minecraftforge.client.event.ScreenEvent;
 import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.eventbus.api.EventPriority;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
@@ -69,9 +68,11 @@ public final class LifeVisualClient {
         Files.writeString(root().resolve("life-scene.request"), SCENES.get(scene));
     }
     @SubscribeEvent(priority = EventPriority.LOWEST)
-    public static void render(ScreenEvent.Render.Post event) throws Exception {
-        if (System.getProperty("life.review.root") == null || scene < 0 || awaitingRespawn
-                || !(event.getScreen() instanceof DeathScreen screen)) return;
+    public static void render(TickEvent.RenderTickEvent event) throws Exception {
+        // End-of-frame observes every Screen Render.Post subscriber, including Discovery LOWEST.
+        if (event.phase != TickEvent.Phase.END || System.getProperty("life.review.root") == null
+                || scene < 0 || awaitingRespawn || Minecraft.getInstance().getOverlay() != null
+                || !(Minecraft.getInstance().screen instanceof DeathScreen screen)) return;
         var session = DeathPresentationObservation.lifeReviewSession();
         if (observed != screen) {
             observed = screen;
@@ -93,7 +94,6 @@ public final class LifeVisualClient {
         String name = String.format(java.util.Locale.ROOT, "life-%s-%02d-%dms.png", SCENES.get(scene), frame, elapsed);
         log("FRAME name=" + name + " elapsed=" + elapsed + " details=" + session.details()
                 + " buttons=" + nativeButtons + " recap=" + recap);
-        event.getGuiGraphics().flush();
         capturing = true;
         Screenshot.grab(mc.gameDirectory, name, mc.getMainRenderTarget(), message -> mc.execute(() -> {
             System.out.println("LIFE_REVIEW_CAPTURE " + name + " " + message.getString());
