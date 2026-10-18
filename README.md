@@ -149,8 +149,9 @@ with `-Dlife.review.root=ISOLATED_ROOT`, it prepares bounded one-player ledger s
 uses real final-death/respawn packets and records timestamped production framebuffers.
 Details is API-prepared by a nonshipping accessor, explicitly not a pointer test. Run
 wide/narrow/reduced-motion as separate fixed-startup clients, never synthetic resizing.
-Review every claimed acceptance image and dispose of worlds/evidence at handoff under the
-shared maintenance policy. The support classes, accessor and fixtures never ship.
+Review every claimed acceptance image and retain worlds/evidence across handoffs by default under the
+[shared retention policy](../../better-content-modpack/docs/policies/generated-data.md).
+Finishing activity deletes nothing; purge is separately gated. The support classes, accessor and fixtures never ship.
 
 ## Presentation and console review
 
