@@ -25,6 +25,26 @@ canceled final death preserves life without fabricating a maim for the catastrop
 Vanilla blocking, armor, absorption, and hurt immunity still apply; this mod adds no maim cooldown.
 Absorption-only hits add trauma but do not maim.
 
+## Bounded playtest observations
+
+`bc.playtest.better_deaths_door.*` uses the existing loader SLF4J backend. Startup reports
+actual version and bounded own-artifact source metadata, or UNKNOWN when absent. DEBUG
+observes damage routing/resolved existing consequences, pending catastrophic death, native
+cancellation versus committed finalization, healing-lock rejection/native write completion,
+and treatment admission, removal and committed cure. It never draws another region/death roll,
+changes saves or sends diagnostic packets. Native UUID is included only as the causal lifecycle
+subject (not player name); dimension/tick distinguish native observations. Freeform treatment
+status/chat is never logged. A resolved death roll is not called committed final death.
+
+One process-local budget covers all categories: 120 detail/minute, burst 20, 256 aggregation
+keys, 2048-character single-line records, coalesced 30-second summaries and server-stop reset.
+Reset does not replenish the allowance or rearm focused TRACE. TRACE remains off without valid
+`bc.playtest.trace.better_deaths_door.dimension` plus exactly one `.subject` UUID or `.pos`;
+its once-per-process focus window is 60 seconds/1000 records, also subject to the shared budget.
+No per-frame, treatment-progress-tick or renderer detail is emitted. Actual failures retain
+existing normal severity outside diagnostic suppression. Client rendering/paired inventory
+acceptance remains separate; these observations do not establish it.
+
 ## Injuries and trauma
 
 Exactly six regions are modeled: head, torso, left/right arm, and left/right leg. Region determines

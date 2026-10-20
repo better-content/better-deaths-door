@@ -81,7 +81,10 @@ public final class RevivalManager {
         if (INTERNAL_WRITE.get() > 0 || !(entity instanceof ServerPlayer p) || p.server == null || isFinalized(p)) return requested;
         BodyState body = state(p);
         if (body.atDoor() && requested > p.getHealth()) {
-            if (!body.tryHeal(now(p))) return p.getHealth();
+            if (!body.tryHeal(now(p))) {
+                com.bettercontent.betterdeathsdoor.diagnostics.RuntimeDiagnostics.playerEvent(p, "healing", "door.heal", "rejected", "trauma_lock");
+                return p.getHealth();
+            }
             HEALED.add(p);
             save(p);
             return HEAL_CALL.get() > 0 ? Math.max(0, requested - SENTINEL) : requested;
@@ -91,6 +94,7 @@ public final class RevivalManager {
     public static void afterHealthWrite(LivingEntity entity) {
         if (INTERNAL_WRITE.get() > 0 || !(entity instanceof ServerPlayer p) || !HEALED.remove(p)) return;
         refresh(p);
+        com.bettercontent.betterdeathsdoor.diagnostics.RuntimeDiagnostics.playerEvent(p, "healing", "door.heal", "observed", "native_health_write_completed");
         MinecraftForge.EVENT_BUS.post(new InjuryEvent.Healed(p, snapshot(p)));
     }
 
@@ -106,12 +110,16 @@ public final class RevivalManager {
             MinecraftForge.EVENT_BUS.post(new InjuryEvent.TraumaIncreased(p, before, after, source));
     }
     public static void applyDamageHealth(ServerPlayer p, DamageSource source, float proposed) {
-        if (!eligible(p) || bypasses(source)) { setHealthInternal(p, proposed); return; }
+        if (!eligible(p) || bypasses(source)) {
+            com.bettercontent.betterdeathsdoor.diagnostics.RuntimeDiagnostics.playerEvent(p, "damage", "damage.route", "native", "ineligible_or_bypass");
+            setHealthInternal(p, proposed); return;
+        }
         DamageLedger.AcceptedHit hit = DamageLedger.acceptedHit(p);
         if (hit != null && CatastrophicFall.bypasses(source.is(DamageTypeTags.IS_FALL), hit.hpDamage(), hit.maxHealthBefore())) {
             // Mark this attempt so LivingDeathEvent does not reinterpret it as another Door hit.
             TERMINATING.add(p);
             CATASTROPHIC_HEALTH.put(p, hit.healthBefore());
+            com.bettercontent.betterdeathsdoor.diagnostics.RuntimeDiagnostics.playerEvent(p, "damage", "death.attempt", "pending", "catastrophic_fall");
             setHealthInternal(p, 0);
             return;
         }
@@ -120,6 +128,11 @@ public final class RevivalManager {
         Region region = region(p, source);
         MaimType type = type(source);
         var result = body.resolveHit(proposed <= 0, region, type, now(p), p.getRandom()::nextDouble, RevivalConfig.tuning());
+        if (com.bettercontent.betterdeathsdoor.diagnostics.RuntimeDiagnostics.LOG.enabled("damage"))
+            com.bettercontent.betterdeathsdoor.diagnostics.DoorObservation.resolved(
+                com.bettercontent.betterdeathsdoor.diagnostics.RuntimeDiagnostics.LOG,
+                new com.bettercontent.betterdeathsdoor.diagnostics.PlaytestLog.Context("server", p.level().dimension().location().toString(),
+                    p.level().getGameTime(), p.getUUID().toString(), ""), result.name(), region.name(), type.name());
         if (result == BodyState.HitResult.FINAL_DEATH) {
             TERMINATING.add(p);
             PENDING_ROLLED_MAIMS.put(p, new PendingRolledMaim(region, type));
@@ -248,16 +261,25 @@ public final class RevivalManager {
         return treatment != null && treatment.subject.equals(subject.getUUID());
     }
     public static void startTreatment(ServerPlayer viewer, ServerPlayer subject) {
-        if (!validTreatmentTarget(viewer, subject) || !RevivalNetwork.isViewing(viewer, subject)) return;
-        if (TREATMENTS.containsKey(viewer.getUUID())) return;
+        if (!validTreatmentTarget(viewer, subject) || !RevivalNetwork.isViewing(viewer, subject)) {
+            com.bettercontent.betterdeathsdoor.diagnostics.RuntimeDiagnostics.playerEvent(viewer, "treatment", "treatment.start", "rejected", "target_or_view"); return;
+        }
+        if (TREATMENTS.containsKey(viewer.getUUID())) {
+            com.bettercontent.betterdeathsdoor.diagnostics.RuntimeDiagnostics.playerEvent(viewer, "treatment", "treatment.start", "rejected", "already_treating"); return;
+        }
         Maim maim = nextMaim(viewer, subject);
-        if (maim == null) { RevivalNetwork.treatmentStatus(viewer, subject, 0, "No active injuries"); return; }
+        if (maim == null) {
+            com.bettercontent.betterdeathsdoor.diagnostics.RuntimeDiagnostics.playerEvent(viewer, "treatment", "treatment.start", "rejected", "no_injuries");
+            RevivalNetwork.treatmentStatus(viewer, subject, 0, "No active injuries"); return;
+        }
         TREATMENTS.put(viewer.getUUID(), new Treatment(viewer.getUUID(), subject.getUUID(), maim));
+        com.bettercontent.betterdeathsdoor.diagnostics.RuntimeDiagnostics.playerEvent(subject, "treatment", "treatment.start", "started", "admitted");
         RevivalNetwork.treatmentStatus(viewer, subject, 0, "Treatment started");
         RevivalNetwork.refreshViewing(viewer, subject);
     }
     public static void cancelTreatment(ServerPlayer viewer, String reason) {
         Treatment previous = TREATMENTS.remove(viewer.getUUID());
+        if (previous != null) com.bettercontent.betterdeathsdoor.diagnostics.RuntimeDiagnostics.playerEvent(viewer, "treatment", "treatment.end", "removed", "native_cancel_or_complete");
         if (previous != null && viewer.connection != null) {
             ServerPlayer target = viewer.server.getPlayerList().getPlayer(previous.subject);
             RevivalNetwork.treatmentStatus(viewer, target == null ? viewer : target, 0, reason);
@@ -296,6 +318,7 @@ public final class RevivalManager {
         TreatmentRecord record = state(subject).cureOldest(treatment.region, treatment.type, HANDS_ON_CARE, now(subject)).orElseThrow();
         LifeRecords.add(subject, LifeMetric.INJURIES_TREATED, 1);
         save(subject); refresh(subject);
+        com.bettercontent.betterdeathsdoor.diagnostics.RuntimeDiagnostics.playerEvent(subject, "treatment", "treatment.cure", "committed", "injury_removed");
         subject.level().playSound(null, subject, SoundEvents.ARMOR_EQUIP_LEATHER, SoundSource.PLAYERS, .65f, .85f);
         MinecraftForge.EVENT_BUS.post(new InjuryEvent.Treated(subject, snapshot(subject), healer, record));
         Maim next = nextMaim(healer, subject);
@@ -327,9 +350,11 @@ public final class RevivalManager {
             RevivalNetwork.sendRecap(p, recap, DamageLedger.Summary.load(saved.getCompound("damage")));
             if (failedProc) RevivalNetwork.send(p, new com.bettercontent.betterdeathsdoor.network.UiControlPacket("failed-proc", "", 0, 0));
         }
+        com.bettercontent.betterdeathsdoor.diagnostics.RuntimeDiagnostics.playerEvent(p, "lifecycle", "death.finalize", "committed", "recap_and_finalized_state");
         MinecraftForge.EVENT_BUS.post(new InjuryEvent.FinalDeath(p, recap, source));
     }
     public static void canceledDeath(ServerPlayer p) {
+        com.bettercontent.betterdeathsdoor.diagnostics.RuntimeDiagnostics.playerEvent(p, "lifecycle", "death.finalize", "canceled", "native_death_veto");
         LifeRecords.canceledDeath(p);
         TERMINATING.remove(p);
         PendingRolledMaim pending = PENDING_ROLLED_MAIMS.remove(p);

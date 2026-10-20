@@ -14,6 +14,7 @@ import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
 public final class RevivalMod {
     public static final String MOD_ID = "better_deaths_door";
     public RevivalMod() {
+        com.bettercontent.betterdeathsdoor.diagnostics.RuntimeDiagnostics.initialize();
         ModLoadingContext.get().registerConfig(ModConfig.Type.COMMON, RevivalConfig.SPEC);
         ModLoadingContext.get().registerConfig(ModConfig.Type.CLIENT, InjuryClientConfig.SPEC);
         InjuryItems.ITEMS.register(FMLJavaModLoadingContext.get().getModEventBus());
