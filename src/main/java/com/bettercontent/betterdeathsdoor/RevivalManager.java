@@ -272,14 +272,20 @@ public final class RevivalManager {
             com.bettercontent.betterdeathsdoor.diagnostics.RuntimeDiagnostics.playerEvent(viewer, "treatment", "treatment.start", "rejected", "no_injuries");
             RevivalNetwork.treatmentStatus(viewer, subject, 0, "No active injuries"); return;
         }
-        TREATMENTS.put(viewer.getUUID(), new Treatment(viewer.getUUID(), subject.getUUID(), maim));
-        com.bettercontent.betterdeathsdoor.diagnostics.RuntimeDiagnostics.playerEvent(subject, "treatment", "treatment.start", "started", "admitted");
+        Treatment admitted = new Treatment(viewer.getUUID(), subject.getUUID(), maim);
+        TREATMENTS.put(viewer.getUUID(), admitted);
+        observeTreatment(subject, "treatment.start", "admitted", "native_treatment_stored", admitted, null);
         RevivalNetwork.treatmentStatus(viewer, subject, 0, "Treatment started");
         RevivalNetwork.refreshViewing(viewer, subject);
     }
     public static void cancelTreatment(ServerPlayer viewer, String reason) {
         Treatment previous = TREATMENTS.remove(viewer.getUUID());
-        if (previous != null) com.bettercontent.betterdeathsdoor.diagnostics.RuntimeDiagnostics.playerEvent(viewer, "treatment", "treatment.end", "removed", "native_cancel_or_complete");
+        if (previous != null) {
+            var log = com.bettercontent.betterdeathsdoor.diagnostics.RuntimeDiagnostics.LOG;
+            if (log.enabled("treatment")) com.bettercontent.betterdeathsdoor.diagnostics.DoorObservation.treatmentEnd(log,
+                () -> com.bettercontent.betterdeathsdoor.diagnostics.RuntimeDiagnostics.playerContext(viewer),
+                previous.healer, previous.subject, previous.maimId, reason);
+        }
         if (previous != null && viewer.connection != null) {
             ServerPlayer target = viewer.server.getPlayerList().getPlayer(previous.subject);
             RevivalNetwork.treatmentStatus(viewer, target == null ? viewer : target, 0, reason);
@@ -290,7 +296,11 @@ public final class RevivalManager {
         for (Treatment treatment : List.copyOf(TREATMENTS.values())) {
             if (treatment.healer.equals(p.getUUID()) || treatment.subject.equals(p.getUUID())) {
                 ServerPlayer healer = p.server.getPlayerList().getPlayer(treatment.healer);
-                if (healer != null) cancelTreatment(healer, reason); else TREATMENTS.remove(treatment.healer);
+                if (healer != null) cancelTreatment(healer, reason);
+                else {
+                    TREATMENTS.remove(treatment.healer);
+                    observeTreatment(p, "treatment.end", "canceled", "healer_unavailable", treatment, null);
+                }
             }
         }
     }
@@ -302,7 +312,14 @@ public final class RevivalManager {
     }
     private static void tickTreatment(MinecraftServer server, Treatment treatment) {
         ServerPlayer healer = server.getPlayerList().getPlayer(treatment.healer), subject = server.getPlayerList().getPlayer(treatment.subject);
-        if (healer == null) { TREATMENTS.remove(treatment.healer); return; }
+        if (healer == null) {
+            TREATMENTS.remove(treatment.healer);
+            var log = com.bettercontent.betterdeathsdoor.diagnostics.RuntimeDiagnostics.LOG;
+            if (log.enabled("treatment")) com.bettercontent.betterdeathsdoor.diagnostics.DoorObservation.treatment(log,
+                () -> com.bettercontent.betterdeathsdoor.diagnostics.PlaytestLog.Context.server("", -1),
+                "treatment.end", "canceled", "healer_unavailable", treatment.healer, treatment.subject, treatment.maimId, null);
+            return;
+        }
         if (!validTreatmentTarget(healer, subject) || !RevivalNetwork.isViewing(healer, subject)) { cancelTreatment(healer, "Treatment interrupted: target out of reach"); return; }
         boolean stillPresent = state(subject).activeMaims().stream().anyMatch(m -> m.id() == treatment.maimId);
         if (!stillPresent) {
@@ -318,12 +335,20 @@ public final class RevivalManager {
         TreatmentRecord record = state(subject).cureOldest(treatment.region, treatment.type, HANDS_ON_CARE, now(subject)).orElseThrow();
         LifeRecords.add(subject, LifeMetric.INJURIES_TREATED, 1);
         save(subject); refresh(subject);
-        com.bettercontent.betterdeathsdoor.diagnostics.RuntimeDiagnostics.playerEvent(subject, "treatment", "treatment.cure", "committed", "injury_removed");
+        observeTreatment(subject, "treatment.cure", "committed", "injury_removed", treatment, record);
         subject.level().playSound(null, subject, SoundEvents.ARMOR_EQUIP_LEATHER, SoundSource.PLAYERS, .65f, .85f);
         MinecraftForge.EVENT_BUS.post(new InjuryEvent.Treated(subject, snapshot(subject), healer, record));
         Maim next = nextMaim(healer, subject);
         if (next == null) cancelTreatment(healer, "Treatment complete");
         else { treatment.select(next); RevivalNetwork.treatmentStatus(healer, subject, 0, "Continuing treatment"); }
+    }
+    private static void observeTreatment(ServerPlayer player, String event, String result, String reason,
+            Treatment treatment, TreatmentRecord committed) {
+        var log = com.bettercontent.betterdeathsdoor.diagnostics.RuntimeDiagnostics.LOG;
+        if (!log.enabled("treatment")) return;
+        com.bettercontent.betterdeathsdoor.diagnostics.DoorObservation.treatment(log,
+            () -> com.bettercontent.betterdeathsdoor.diagnostics.RuntimeDiagnostics.playerContext(player), event, result, reason,
+            treatment.healer, treatment.subject, treatment.maimId, committed == null ? null : committed.maimId());
     }
     private static final class Treatment {
         final UUID healer, subject; long maimId; Region region; MaimType type; double progress;

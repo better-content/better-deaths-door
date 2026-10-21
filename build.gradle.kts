@@ -1,5 +1,6 @@
 import groovy.json.JsonSlurper
 import java.util.zip.ZipFile
+import java.util.UUID
 import java.util.jar.Manifest as JarManifest
 
 plugins {
@@ -47,6 +48,9 @@ configurations[injuryVisual.implementationConfigurationName].extendsFrom(configu
 configurations[injuryVisual.compileOnlyConfigurationName].extendsFrom(configurations.compileOnly.get())
 configurations[injuryVisual.runtimeOnlyConfigurationName].extendsFrom(configurations.runtimeOnly.get())
 
+// Dedicated retained native attempts never reset the shared client run/saves.
+val nativeRunDirectory = project.file("run-gametest/attempts/${UUID.randomUUID()}")
+
 minecraft {
     mappings("official", property("minecraft_version") as String)
     copyIdeResources = true
@@ -85,7 +89,7 @@ minecraft {
             mods { create("better_deaths_door_review_support") { source(injuryVisual) } }
         }
         create("server") { arg("--nogui") }
-        create("gameTestServer")
+        create("gameTestServer") { workingDirectory(nativeRunDirectory) }
     }
 }
 
@@ -324,19 +328,41 @@ tasks.register("headlessGameTest") {
 
 val syncGameTestStructures by tasks.registering(Copy::class) {
     from(layout.projectDirectory.dir("src/main/resources/gameteststructures"))
-    into(layout.projectDirectory.dir("run/gameteststructures"))
+    into(nativeRunDirectory.resolve("gameteststructures"))
 }
 
 tasks.matching { it.name == "prepareRunGameTestServer" }.configureEach {
     dependsOn(syncGameTestStructures)
 }
 
+val verifyNativeSetup by tasks.registering(Exec::class) {
+    commandLine("python3", "-B", "-m", "unittest", "discover", "-s", "scripts", "-p", "test_native_properties.py")
+}
+val prepareNativeProperties by tasks.registering(Exec::class) {
+    commandLine("python3", "-B", "scripts/ensure_native_properties.py", nativeRunDirectory.absolutePath)
+}
+tasks.matching { it.name == "runGameTestServer" }.configureEach { dependsOn(prepareNativeProperties) }
+val verifyNativeDiagnostics by tasks.registering {
+    dependsOn("headlessGameTest")
+    doLast {
+        val log = nativeRunDirectory.resolve("logs/latest.log")
+        check(log.isFile) { "Missing actual native fixture diagnostics: $log" }
+        val text = log.readText()
+        check(text.contains("All 30 required tests passed") && text.contains("30 GAME TESTS COMPLETE")) {
+            "Missing thirty-test native completion: $log"
+        }
+        val failures = text.lineSequence().filter { line ->
+            listOf("/ERROR]", "/FATAL]", "[ERROR]", "[FATAL]", "Mixin apply failed").any(line::contains)
+        }.toList()
+        check(failures.isEmpty()) { "Native failed-operation diagnostics: ${failures.take(8)}" }
+    }
+}
 tasks.register("verifyFast") {
     group = "verification"
-    dependsOn(tasks.named("check"), verifyRuntimeRefmap)
+    dependsOn(tasks.named("check"), verifyRuntimeRefmap, verifyNativeSetup)
 }
 
 tasks.register("verifyFull") {
     group = "verification"
-    dependsOn(tasks.named("verifyFast"), tasks.named("headlessGameTest"))
+    dependsOn(tasks.named("verifyFast"), verifyNativeDiagnostics)
 }

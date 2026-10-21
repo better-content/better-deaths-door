@@ -15,7 +15,7 @@ public final class RuntimeDiagnostics {
         var own = mods.getModFileById("better_deaths_door");
         String source = LOG.sourceIdentity(own == null ? null : own.getFile().findResource("META-INF", "better-content-source.properties"));
         String version = mods.getModContainerById("better_deaths_door").map(c -> c.getModInfo().getVersion().toString()).orElse("UNKNOWN");
-        LOG.status("common", version, source, () -> PlaytestLog.fields("enabled", true, "integration", "UNKNOWN"));
+        LOG.status("common", version, source, () -> PlaytestLog.fields("enabled", true, "epicfight", mods.isLoaded("epicfight"), "mantle", mods.isLoaded("mantle"), "survival_hud", mods.isLoaded("better_survival_hud"), "notices", mods.isLoaded("better_gameplay_notices")));
     }
     public static void event(String category, String event, String result, String reason) {
         if (!LOG.enabled(category)) return;
@@ -27,6 +27,11 @@ public final class RuntimeDiagnostics {
         var level = player.serverLevel();
         LOG.debug(category, event, new PlaytestLog.Context("server", level.dimension().location().toString(), level.getGameTime(),
             player.getUUID().toString(), ""), result, reason, () -> "");
+    }
+    /** Caller guards first; native subject UUID is correlation, never a name or player reference. */
+    public static PlaytestLog.Context playerContext(net.minecraft.server.level.ServerPlayer player) {
+        var level = player.serverLevel();
+        return new PlaytestLog.Context("server", level.dimension().location().toString(), level.getGameTime(), player.getUUID().toString(), "");
     }
     public static PlaytestLog.Context context(net.minecraft.world.level.Level level) {
         return new PlaytestLog.Context(level.isClientSide ? "client" : "server", level.dimension().location().toString(), level.getGameTime(), "", "");

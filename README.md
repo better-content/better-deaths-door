@@ -33,8 +33,15 @@ observes damage routing/resolved existing consequences, pending catastrophic dea
 cancellation versus committed finalization, healing-lock rejection/native write completion,
 and treatment admission, removal and committed cure. It never draws another region/death roll,
 changes saves or sends diagnostic packets. Native UUID is included only as the causal lifecycle
-subject (not player name); dimension/tick distinguish native observations. Freeform treatment
-status/chat is never logged. A resolved death roll is not called committed final death.
+subject (not player name); dimension/tick distinguish native observations. Treatment boundaries
+also project existing immutable healer/patient UUIDs and selected maim ID; committed cure adds
+the actual returned TreatmentRecord maim ID, never inferring it from selection. Admission,
+native cancellation and native exhaustion/completion are distinct; only a returned cure record
+is a committed injury removal. Missing-healer cleanup retains its existing IDs but invents no
+world/clock when no authoritative player is available. Native UI reasons are classified into
+finite completion/cancel codes, never emitted as freeform treatment status/chat. All native
+record/context reads are guarded, with no extra life-record lookup, protocol, cache or RNG.
+A resolved death roll is not called committed final death.
 
 One process-local budget covers all categories: 120 detail/minute, burst 20, 256 aggregation
 keys, 2048-character single-line records, coalesced 30-second summaries and server-stop reset.
@@ -44,6 +51,13 @@ its once-per-process focus window is 60 seconds/1000 records, also subject to th
 No per-frame, treatment-progress-tick or renderer detail is emitted. Actual failures retain
 existing normal severity outside diagnostic suppression. Client rendering/paired inventory
 acceptance remains separate; these observations do not establish it.
+
+The full native gate now uses a retained fresh `run-gametest/attempts/<UUID>` working directory,
+leaving the legacy shared client `run` and all saves untouched. Absence-only `server.properties`
+setup preserves any existing file bytes; regression tests cover missing/existing/non-file cases.
+The gate requires actual30 required completions and rejects ERROR/FATAL/failed mixin operations,
+not just Gradle exit0. Fresh-fixture acceptance of this harness change requires a new full gate;
+older warm-fixture passes must not be relabeled as that evidence.
 
 ## Injuries and trauma
 
