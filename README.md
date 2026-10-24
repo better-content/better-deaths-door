@@ -1,10 +1,6 @@
 # Death’s Door
 
-## Scope and authority
-
-This repository owns its mod-specific behavior and authoring inputs. Read [local instructions](AGENTS.md)
-and the [shared documentation/policy index](../../better-content-modpack/docs/README.md).
-
+## Scope
 
 Death’s Door is Better Content’s server-authoritative bodily injury system for Forge 1.20.1.
 The runtime identity remains `better_deaths_door`.
@@ -183,9 +179,8 @@ with `-Dlife.review.root=ISOLATED_ROOT`, it prepares bounded one-player ledger s
 uses real final-death/respawn packets and records timestamped production framebuffers.
 Details is API-prepared by a nonshipping accessor, explicitly not a pointer test. Run
 wide/narrow/reduced-motion as separate fixed-startup clients, never synthetic resizing.
-Review every claimed acceptance image and retain worlds/evidence across handoffs by default under the
-[shared retention policy](../../better-content-modpack/docs/policies/generated-data.md).
-Finishing activity deletes nothing; purge is separately gated. The support classes, accessor and fixtures never ship.
+Review every claimed acceptance image and
+ The support classes, accessor and fixtures never ship.
 
 ## Presentation and console review
 
