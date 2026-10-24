@@ -170,8 +170,12 @@ the world and on inventory avatars. The optional Epic Fight 20.14.17 bridge repl
 maim layer's native fallback, using posed native skin and armor meshes with region/joint masks;
 vanilla rendering retains its own layer. Native outer-clothing UVs are mapped to the existing
 base-skin mark islands, and native 64×32 armor UVs are normalized to the 64×64 mark textures.
-Shared mesh visibility is restored after every draw. Pinned mesh triangles and authored PNG alpha
-coverage test both standard/slim skin and native armor mappings; source gates are not pixel acceptance.
+Shared mesh visibility is restored after every draw. Mark clearance uses geometric normals recovered
+from the current position and lighting-normal transforms, not lighting normals directly: native
+inventory rendering reflects/scales positions without applying that reflection to its lighting normals.
+The offset remains model-scaled, and original lighting normals, textures and native depth testing are
+preserved. Pinned mesh triangles and authored PNG alpha coverage test both standard/slim skin and native
+armor mappings; transform tests cover position-only GUI reflection. Source gates are not pixel acceptance.
 The inventory and teammate views show active injuries; the
 final-death recap retains active and treated totals. A confirmed failed death roll plays its own
 sound; surviving zero crossings do not show a final recap.
@@ -211,6 +215,24 @@ actual framebuffer. The review source set is excluded from runtime JARs. Its sta
 would violate its minimum GUI dimensions. It includes inventory maim lists, armored avatars,
 treatment states, probability/health/absorption combinations, HUD fading, reduced motion, and
 native final death.
+
+### Focused maim-surface diagnostic
+
+Run the nonshipping surface diagnostic with:
+
+```sh
+INJURY_REVIEW_MANUAL=1 MAIM_REVIEW_MATRIX=1 ./gradlew runInjuryVisual \
+  -PinjuryEpicTests=true -PinjuryVisualWidth=1280 -PinjuryVisualHeight=960
+```
+
+Set GUI scale 2 in the isolated fixture's options before startup. The diagnostic does not resize
+or synthesize pointer input. It captures the real native avatar helper at fifteen explicit
+angle pairs for each maim type with clothing enabled/disabled, then native personal-inventory
+skin/clothing/armor views and third-person world views. It authors six server injuries and requires
+synchronized visual counts before capture. Screenshots remain under `build/injury-visual/screenshots/`.
+The multi-avatar diagnostic canvas is not a native menu or human-pointer acceptance result;
+vanilla-only reruns omit `-PinjuryEpicTests=true`. Curios variants, equipped-backpack parity and
+human interaction still require their separate same-artifact native acceptance.
 
 ### Focused native heart compatibility review
 
