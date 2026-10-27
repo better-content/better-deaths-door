@@ -217,7 +217,9 @@ val verifyRuntimeRefmap by tasks.registering {
             "PlayerDamageMixin" to mapOf("actuallyHurt" to "m_6475_",
                 "Lnet/minecraft/world/entity/player/Player;setHealth(F)V" to "m_21153_"),
             "MantleHealthMixin" to mapOf("Lnet/minecraft/world/entity/player/Player;getHealth()F" to "m_21223_"),
-            "LivingHealthMixin" to mapOf("heal" to "m_5634_", "setHealth" to "m_21153_"),
+            "LivingHealthMixin" to mapOf("heal" to "m_5634_", "setHealth" to "m_21153_",
+                "Lnet/minecraft/world/entity/LivingEntity;setHealth(F)V" to "m_21153_",
+                "Lnet/minecraft/network/syncher/SynchedEntityData;set(Lnet/minecraft/network/syncher/EntityDataAccessor;Ljava/lang/Object;)V" to "m_135381_"),
             "PlayerMeleeBonusMixin" to mapOf("attack" to "m_5706_",
                 "Lnet/minecraft/world/item/enchantment/EnchantmentHelper;getDamageBonus(Lnet/minecraft/world/item/ItemStack;Lnet/minecraft/world/entity/MobType;)F" to "m_44833_",
                 "Lnet/minecraft/world/entity/LivingEntity;hurt(Lnet/minecraft/world/damagesource/DamageSource;F)Z" to "m_6469_")

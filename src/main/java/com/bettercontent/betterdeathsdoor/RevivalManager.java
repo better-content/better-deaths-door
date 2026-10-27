@@ -1,6 +1,8 @@
 package com.bettercontent.betterdeathsdoor;
 
 import com.bettercontent.betterdeathsdoor.api.event.InjuryEvent;
+import com.bettercontent.betterdeathsdoor.api.HealthGate;
+import com.bettercontent.betterdeathsdoor.nativecommit.NativeStoreScope;
 import com.bettercontent.betterdeathsdoor.records.LifeRecords;
 import com.bettercontent.betterdeathsdoor.records.LifeMetric;
 import com.bettercontent.betterdeathsdoor.network.RevivalNetwork;
@@ -36,14 +38,13 @@ public final class RevivalManager {
     private static final String HANDS_ON_CARE = "better_deaths_door:care";
     private static final Map<ServerPlayer, BodyState> STATES = new IdentityHashMap<>();
     private static final Set<ServerPlayer> DIRTY = Collections.newSetFromMap(new IdentityHashMap<>());
-    private static final Set<ServerPlayer> HEALED = Collections.newSetFromMap(new IdentityHashMap<>());
+    private static final HealthGate.Sources HEALTH_SOURCES = new HealthGate.Sources();
+    private static final HealthGate.Writes HEALTH_WRITES = new HealthGate.Writes();
     private static final Set<ServerPlayer> TERMINATING = Collections.newSetFromMap(new IdentityHashMap<>());
     private record PendingRolledMaim(Region region, MaimType type) {}
     private static final Map<ServerPlayer, PendingRolledMaim> PENDING_ROLLED_MAIMS = new IdentityHashMap<>();
     private static final Map<ServerPlayer, Float> CATASTROPHIC_HEALTH = new IdentityHashMap<>();
     private static final Map<UUID, Treatment> TREATMENTS = new HashMap<>();
-    private static final ThreadLocal<Integer> INTERNAL_WRITE = ThreadLocal.withInitial(() -> 0);
-    private static final ThreadLocal<Integer> HEAL_CALL = ThreadLocal.withInitial(() -> 0);
     private static final UUID TORSO = UUID.fromString("72f6e692-6ad8-40da-aa2f-491394e8d200");
     private static final UUID LEGS = UUID.fromString("72f6e692-6ad8-40da-aa2f-491394e8d201");
     private static final UUID DAMAGE = UUID.fromString("72f6e692-6ad8-40da-aa2f-491394e8d202");
@@ -59,7 +60,7 @@ public final class RevivalManager {
                 body.enterDoor(now(player), RevivalConfig.tuning());
                 player.getPersistentData().remove(LEGACY);
                 player.setForcedPose(null);
-                setHealthInternal(player, SENTINEL);
+                setHealthInternal(player, SENTINEL, HealthGate.WriteKind.LEGACY_SENTINEL_INIT);
                 player.getPersistentData().put(BodyState.ROOT_TAG, body.save());
             }
             return body;
@@ -71,31 +72,85 @@ public final class RevivalManager {
     private static void save(ServerPlayer p) { p.getPersistentData().put(BodyState.ROOT_TAG, state(p).save()); }
     public static boolean isFinalized(ServerPlayer p) { return p.getPersistentData().getBoolean(FINALIZED); }
     public static boolean isTerminating(ServerPlayer p) { return TERMINATING.contains(p); }
+    /** Legacy external callers are classified, not granted a blanket internal-heal exemption. */
     public static void setHealthInternal(ServerPlayer p, float health) {
-        INTERNAL_WRITE.set(INTERNAL_WRITE.get() + 1);
-        try { p.setHealth(health); } finally { INTERNAL_WRITE.set(INTERNAL_WRITE.get() - 1); }
+        setHealthInternal(p, health, HealthGate.WriteKind.UNKNOWN_INTERNAL);
     }
-    public static void beginHeal() { HEAL_CALL.set(HEAL_CALL.get() + 1); }
-    public static void endHeal() { HEAL_CALL.set(Math.max(0, HEAL_CALL.get() - 1)); }
-    public static float filterHealthWrite(LivingEntity entity, float requested) {
-        if (INTERNAL_WRITE.get() > 0 || !(entity instanceof ServerPlayer p) || p.server == null || isFinalized(p)) return requested;
-        BodyState body = state(p);
-        if (body.atDoor() && requested > p.getHealth()) {
-            if (!body.tryHeal(now(p))) {
-                com.bettercontent.betterdeathsdoor.diagnostics.RuntimeDiagnostics.playerEvent(p, "healing", "door.heal", "rejected", "trauma_lock");
-                return p.getHealth();
-            }
-            HEALED.add(p);
-            save(p);
-            return HEAL_CALL.get() > 0 ? Math.max(0, requested - SENTINEL) : requested;
+    private static void setHealthInternal(ServerPlayer p, float health, HealthGate.WriteKind kind) {
+        try (var scope = HEALTH_SOURCES.open(p, kind, 0, health)) { p.setHealth(health); }
+    }
+    /** Called only at heal's actual setHealth invocation, with live post-Forge slot-1 amount.
+     * The source can be claimed once; nested callback direct writes cannot reuse its budget. */
+    public static void writeHeal(LivingEntity entity, float target, float earnedAmount) {
+        if (!Float.isFinite(earnedAmount) || earnedAmount <= 0) throw new IllegalArgumentException("Invalid native heal budget");
+        try (var scope = HEALTH_SOURCES.open(entity, HealthGate.WriteKind.HEAL_CALL, earnedAmount)) {
+            entity.setHealth(target);
         }
-        return requested;
     }
-    public static void afterHealthWrite(LivingEntity entity) {
-        if (INTERNAL_WRITE.get() > 0 || !(entity instanceof ServerPlayer p) || !HEALED.remove(p)) return;
-        refresh(p);
-        com.bettercontent.betterdeathsdoor.diagnostics.RuntimeDiagnostics.playerEvent(p, "healing", "door.heal", "observed", "native_health_write_completed");
-        MinecraftForge.EVENT_BUS.post(new InjuryEvent.Healed(p, snapshot(p)));
+    private static boolean structuralWrite(HealthGate.WriteKind kind) {
+        return switch (kind) {
+            case DAMAGE_WRITE, DAMAGE_SENTINEL, LEGACY_SENTINEL_INIT, MAX_HEALTH_CLAMP, CANCELED_DEATH_ROLLBACK, DEBUG_SETUP -> true;
+            default -> false;
+        };
+    }
+    /** The intercepted health DATA setter, not a replacement simulated heal/event.
+     * Native constructor/NPC writes remain native; initialized server players use one gate.
+     * The already computed native clamp is used unchanged for those nonplayer/bootstrap cases.
+     */
+    public static void writeHealth(LivingEntity entity, float raw, float nativeClamped,
+                                   java.util.function.Consumer<Float> nativeWriter) {
+        if (!(entity instanceof ServerPlayer p) || p.server == null) { nativeWriter.accept(nativeClamped); return; }
+        var origin = HEALTH_SOURCES.claim(p);
+        boolean capturedStructural = switch (origin.kind()) {
+            case DAMAGE_SENTINEL, LEGACY_SENTINEL_INIT, CANCELED_DEATH_ROLLBACK, DEBUG_SETUP -> true;
+            default -> false;
+        };
+        // Generic damage/clamp may become ordinary positive recovery at the primitive. Load
+        // its body before the frame, while the typed initialization sentinel must never recurse.
+        BodyState body = isFinalized(p) ? null : capturedStructural ? STATES.get(p) : state(p);
+        HealthGate gate = HealthGate.current();
+        var context = new HealthGate.WriteContext[1];
+        HEALTH_WRITES.execute(p, p::getHealth, frame -> {
+            float maximum = p.getMaxHealth();
+            float nativeCandidate = HealthGate.project(frame.before(), raw, maximum, false, false, SENTINEL);
+            var effective = HealthGate.classify(origin, frame.before(), raw, nativeCandidate, SENTINEL);
+            boolean structural = structuralWrite(effective.kind());
+            boolean atDoor = body != null && body.atDoor();
+            boolean locked = atDoor && !body.canHeal(now(p));
+            boolean recoveringDoor = atDoor && !structural && raw > frame.before();
+            if (recoveringDoor && locked) com.bettercontent.betterdeathsdoor.diagnostics.RuntimeDiagnostics.playerEvent(p,
+                    "healing", "door.heal", "rejected", "trauma_lock");
+            float projected = HealthGate.project(frame.before(), raw, maximum,
+                    recoveringDoor && effective.kind() == HealthGate.WriteKind.HEAL_CALL,
+                    recoveringDoor && locked, SENTINEL);
+            context[0] = new HealthGate.WriteContext(frame.id(), p, frame.before(), raw, projected, effective.earnedBudget(),
+                    effective.kind(), !atDoor ? HealthGate.DoorEligibility.NOT_AT_DOOR
+                            : locked ? HealthGate.DoorEligibility.LOCKED : HealthGate.DoorEligibility.ELIGIBLE);
+            return gate.beforeWrite(context[0]);
+        }, decision -> {
+            var c = context[0];
+            if (p.getHealth() != c.beforeHealth()) throw new IllegalStateException("HealthGate changed HP during preflight");
+            float admitted = HealthGate.validateTarget(c.beforeHealth(), c.projectedNativeTarget(), decision);
+            float maximum = p.getMaxHealth();
+            if (!Float.isFinite(maximum) || maximum <= 0) throw new IllegalStateException("Invalid current maximum health");
+            return Math.max(0, Math.min(maximum, admitted));
+        }, target -> {
+            try (var ignored = NativeStoreScope.GLOBAL.openWrite(p, context[0], gate, target)) {
+                nativeWriter.accept(target);
+            }
+        }, (frame, decision, normal) -> HealthGate.Writes.finishCallbacks(() -> {
+            // Also called with null decision if preflight threw after publishing pending state.
+            if (context[0] != null) gate.afterWrite(context[0], decision, frame.after(), normal);
+        }, () -> {
+            if (context[0] != null && !structuralWrite(context[0].kind())
+                    && body != null && !isFinalized(p) && p.getHealth() > 0
+                    && body.commitHealing(now(p), frame.ownDelta())) {
+                save(p); refresh(p);
+                com.bettercontent.betterdeathsdoor.diagnostics.RuntimeDiagnostics.playerEvent(p,
+                        "healing", "door.heal", "observed", "native_health_write_completed");
+                MinecraftForge.EVENT_BUS.post(new InjuryEvent.Healed(p, snapshot(p)));
+            }
+        }));
     }
 
     public static void acceptedHit(ServerPlayer p, DamageSource source) {
@@ -112,7 +167,7 @@ public final class RevivalManager {
     public static void applyDamageHealth(ServerPlayer p, DamageSource source, float proposed) {
         if (!eligible(p) || bypasses(source)) {
             com.bettercontent.betterdeathsdoor.diagnostics.RuntimeDiagnostics.playerEvent(p, "damage", "damage.route", "native", "ineligible_or_bypass");
-            setHealthInternal(p, proposed); return;
+            setHealthInternal(p, proposed, HealthGate.WriteKind.DAMAGE_WRITE); return;
         }
         DamageLedger.AcceptedHit hit = DamageLedger.acceptedHit(p);
         if (hit != null && CatastrophicFall.bypasses(source.is(DamageTypeTags.IS_FALL), hit.hpDamage(), hit.maxHealthBefore())) {
@@ -120,11 +175,11 @@ public final class RevivalManager {
             TERMINATING.add(p);
             CATASTROPHIC_HEALTH.put(p, hit.healthBefore());
             com.bettercontent.betterdeathsdoor.diagnostics.RuntimeDiagnostics.playerEvent(p, "damage", "death.attempt", "pending", "catastrophic_fall");
-            setHealthInternal(p, 0);
+            setHealthInternal(p, 0, HealthGate.WriteKind.DAMAGE_WRITE);
             return;
         }
         BodyState body = state(p);
-        if (!body.atDoor() && proposed > 0) { setHealthInternal(p, proposed); return; }
+        if (!body.atDoor() && proposed > 0) { setHealthInternal(p, proposed, HealthGate.WriteKind.DAMAGE_WRITE); return; }
         Region region = region(p, source);
         MaimType type = type(source);
         var result = body.resolveHit(proposed <= 0, region, type, now(p), p.getRandom()::nextDouble, RevivalConfig.tuning());
@@ -136,10 +191,10 @@ public final class RevivalManager {
         if (result == BodyState.HitResult.FINAL_DEATH) {
             TERMINATING.add(p);
             PENDING_ROLLED_MAIMS.put(p, new PendingRolledMaim(region, type));
-            setHealthInternal(p, 0);
+            setHealthInternal(p, 0, HealthGate.WriteKind.DAMAGE_WRITE);
             return;
         }
-        setHealthInternal(p, SENTINEL);
+        setHealthInternal(p, SENTINEL, HealthGate.WriteKind.DAMAGE_SENTINEL);
         save(p); DIRTY.add(p); applyModifiers(p);
         if (result == BodyState.HitResult.ENTERED_DOOR) {
             LifeRecords.add(p, LifeMetric.DOOR_ENTRIES, 1);
@@ -222,7 +277,7 @@ public final class RevivalManager {
         modifier(p, Attributes.ATTACK_DAMAGE, DAMAGE, arms);
         modifier(p, ForgeMod.ENTITY_REACH.get(), REACH, arms);
         modifier(p, ForgeMod.BLOCK_REACH.get(), REACH, arms);
-        if (p.getHealth() > p.getMaxHealth()) setHealthInternal(p, p.getMaxHealth());
+        if (p.getHealth() > p.getMaxHealth()) setHealthInternal(p, p.getMaxHealth(), HealthGate.WriteKind.MAX_HEALTH_CLAMP);
     }
     private static void modifier(ServerPlayer p, Attribute attribute, UUID id, double reduction) {
         AttributeInstance instance = p.getAttribute(attribute);
@@ -369,7 +424,7 @@ public final class RevivalManager {
         p.getPersistentData().putBoolean(FINALIZED, true);
         interruptParticipant(p, "Treatment interrupted: life ended");
         state(p).clear(); p.getPersistentData().remove(BodyState.ROOT_TAG);
-        DIRTY.remove(p); HEALED.remove(p); TERMINATING.remove(p); PENDING_ROLLED_MAIMS.remove(p); CATASTROPHIC_HEALTH.remove(p);
+        DIRTY.remove(p); TERMINATING.remove(p); PENDING_ROLLED_MAIMS.remove(p); CATASTROPHIC_HEALTH.remove(p);
         if (p.connection != null) {
             RevivalNetwork.sync(p, snapshot(p));
             RevivalNetwork.sendRecap(p, recap, DamageLedger.Summary.load(saved.getCompound("damage")));
@@ -386,10 +441,12 @@ public final class RevivalManager {
         Float previousHealth = CATASTROPHIC_HEALTH.remove(p);
         if (previousHealth != null && !isFinalized(p)) {
             // Honor another mod's death cancellation without manufacturing an injury.
-            setHealthInternal(p, state(p).atDoor() ? SENTINEL : Math.max(SENTINEL, Math.min(p.getMaxHealth(), previousHealth)));
+            setHealthInternal(p, state(p).atDoor() ? SENTINEL : Math.max(SENTINEL, Math.min(p.getMaxHealth(), previousHealth)),
+                    HealthGate.WriteKind.CANCELED_DEATH_ROLLBACK);
             DIRTY.remove(p); save(p); refresh(p);
         }
-        if (state(p).atDoor() && p.getHealth() <= 0) setHealthInternal(p, SENTINEL);
+        if (state(p).atDoor() && p.getHealth() <= 0)
+            setHealthInternal(p, SENTINEL, HealthGate.WriteKind.CANCELED_DEATH_ROLLBACK);
         if (pending != null && !isFinalized(p)) {
             // A canceled final-death event survived this accepted hit: its consequence is still guaranteed.
             DamageLedger.AcceptedHit accepted = DamageLedger.acceptedHit(p);
@@ -426,7 +483,7 @@ public final class RevivalManager {
         LifeRecords.logout(p);
         interruptParticipant(p, "Treatment interrupted: player disconnected"); RevivalNetwork.closeBody(p);
         if (!isFinalized(p)) save(p);
-        STATES.remove(p); DIRTY.remove(p); HEALED.remove(p); TERMINATING.remove(p); PENDING_ROLLED_MAIMS.remove(p); CATASTROPHIC_HEALTH.remove(p);
+        STATES.remove(p); DIRTY.remove(p); TERMINATING.remove(p); PENDING_ROLLED_MAIMS.remove(p); CATASTROPHIC_HEALTH.remove(p);
     }
     public static void clonePlayer(ServerPlayer old, ServerPlayer replacement, boolean death) {
         STATES.remove(replacement);
@@ -435,10 +492,10 @@ public final class RevivalManager {
         replacement.getPersistentData().remove(RECAP); replacement.getPersistentData().remove(FINALIZED);
         if (death) { replacement.getPersistentData().remove(BodyState.ROOT_TAG); STATES.put(replacement, new BodyState()); }
         else { STATES.put(replacement, state(old).copy()); save(replacement); }
-        STATES.remove(old); TERMINATING.remove(old); PENDING_ROLLED_MAIMS.remove(old); CATASTROPHIC_HEALTH.remove(old); DIRTY.remove(old); HEALED.remove(old);
+        STATES.remove(old); TERMINATING.remove(old); PENDING_ROLLED_MAIMS.remove(old); CATASTROPHIC_HEALTH.remove(old); DIRTY.remove(old);
         refresh(replacement);
     }
-    public static void shutdown() { LifeRecords.shutdown(); STATES.clear(); DIRTY.clear(); HEALED.clear(); TERMINATING.clear(); PENDING_ROLLED_MAIMS.clear(); CATASTROPHIC_HEALTH.clear(); TREATMENTS.clear(); RevivalNetwork.clear(); }
+    public static void shutdown() { LifeRecords.shutdown(); STATES.clear(); DIRTY.clear(); TERMINATING.clear(); PENDING_ROLLED_MAIMS.clear(); CATASTROPHIC_HEALTH.clear(); TREATMENTS.clear(); RevivalNetwork.clear(); }
 
     /** Explicit admin fixture command; callers restrict this to isolated review players. */
     public static void debugScenario(ServerPlayer p, String fixture) {
@@ -458,8 +515,9 @@ public final class RevivalManager {
             }
             for (int i = 0; i < 5; i++) state(p).addTrauma(fixture.equals("trauma-expiry") ? now(p) - RevivalConfig.tuning().traumaLifetimeTicks() + 20L * (i + 1) : now(p), RevivalConfig.tuning());
         }
-        if (fixture.equals("door") || fixture.equals("healing-lock") || fixture.equals("severe")) { state(p).enterDoor(now(p), RevivalConfig.tuning()); setHealthInternal(p, SENTINEL); }
-        else { applyModifiers(p); setHealthInternal(p, p.getMaxHealth()); }
+        if (fixture.equals("door") || fixture.equals("healing-lock") || fixture.equals("severe")) {
+            state(p).enterDoor(now(p), RevivalConfig.tuning()); setHealthInternal(p, SENTINEL, HealthGate.WriteKind.DEBUG_SETUP);
+        } else { applyModifiers(p); setHealthInternal(p, p.getMaxHealth(), HealthGate.WriteKind.DEBUG_SETUP); }
         save(p); refresh(p);
     }
 }

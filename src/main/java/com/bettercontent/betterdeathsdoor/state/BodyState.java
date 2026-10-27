@@ -43,9 +43,17 @@ public final class BodyState {
         refreshHeartbeat(now);
     }
     public void exitDoor() { atDoor = false; healingLockedUntil = 0; heartbeatUntil = 0; }
-    /** Call only for a real positive healing attempt. */
+    /** Read-only eligibility. A request or a heal event must not leave Door by itself. */
+    public boolean canHeal(long now) { return !healingLocked(now); }
+    /** Commit only after the actual native write produced positive own HP gain. */
+    public boolean commitHealing(long now, double actualOwnGain) {
+        if (!atDoor || !Double.isFinite(actualOwnGain) || actualOwnGain <= 0 || !canHeal(now)) return false;
+        exitDoor();
+        return true;
+    }
+    /** Legacy pure/body API; runtime health writes use observed commitHealing instead. */
     public boolean tryHeal(long now) {
-        if (healingLocked(now)) return false;
+        if (!canHeal(now)) return false;
         exitDoor();
         return true;
     }
