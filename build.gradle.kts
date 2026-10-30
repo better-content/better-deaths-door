@@ -213,6 +213,14 @@ val verifyRuntimeRefmap by tasks.registering {
             "LifeNativeServerPlayerMixin" to mapOf("setExperienceLevels" to "m_9174_", "setExperiencePoints" to "m_8985_",
                 "setGameMode" to "m_143403_", "giveExperienceLevels" to "m_6749_"),
             "DeathCauseAccessor" to mapOf("causeOfDeath" to "f_95907_"),
+            "HealthDataItemCommitMixin" to mapOf(
+                "setValue(Ljava/lang/Object;)V" to "m_135397_",
+                "Lnet/minecraft/network/syncher/SynchedEntityData\$DataItem;value:Ljava/lang/Object;" to "f_135391_"),
+            "SynchedEntityDataCommitMixin" to mapOf(
+                "Lnet/minecraft/network/syncher/SynchedEntityData\$DataItem;setValue(Ljava/lang/Object;)V" to "m_135397_",
+                "set(Lnet/minecraft/network/syncher/EntityDataAccessor;Ljava/lang/Object;Z)V" to "m_276349_",
+                "assignValue(Lnet/minecraft/network/syncher/SynchedEntityData\$DataItem;Lnet/minecraft/network/syncher/SynchedEntityData\$DataValue;)V" to "m_135375_"),
+            "FoodDataRawAccess" to mapOf("saturationLevel" to "f_38697_", "foodLevel" to "f_38696_"),
             "ToastVisibilityMixin" to mapOf("render" to "m_94920_"),
             "PlayerDamageMixin" to mapOf("actuallyHurt" to "m_6475_",
                 "Lnet/minecraft/world/entity/player/Player;setHealth(F)V" to "m_21153_"),
@@ -224,6 +232,9 @@ val verifyRuntimeRefmap by tasks.registering {
                 "Lnet/minecraft/world/item/enchantment/EnchantmentHelper;getDamageBonus(Lnet/minecraft/world/item/ItemStack;Lnet/minecraft/world/entity/MobType;)F" to "m_44833_",
                 "Lnet/minecraft/world/entity/LivingEntity;hurt(Lnet/minecraft/world/damagesource/DamageSource;F)Z" to "m_6469_")
         )
+        // These source-spike mixins compile into the JAR but are deliberately not registered.
+        // Validate their generated mappings without treating them as active runtime hooks.
+        val dormant = setOf("HealthDataItemCommitMixin", "SynchedEntityDataCommitMixin", "FoodDataRawAccess")
         val unmappedNative = setOf("EpicColliderMixin", "EpicPhaseMixin", "EpicReachMixin", "ForgeHealthMixin", "LifeForgePlacementMixin")
         val namespace = "com.bettercontent.betterdeathsdoor.mixin"
         ZipFile(runtimeJar.get().asFile).use { zip ->
@@ -236,7 +247,7 @@ val verifyRuntimeRefmap by tasks.registering {
                     && config["refmap"] == "better_deaths_door.refmap.json"
                     && config["plugin"] == "$namespace.MantleCompatibilityPlugin") { "Invalid runtime mixin/refmap metadata" }
             val registered = listOf("mixins", "client", "server").flatMap { (config[it] as? List<*>) ?: emptyList<Any>() }
-            check(registered.size == registered.toSet().size && registered.toSet() == expected.keys + unmappedNative) {
+            check(registered.size == registered.toSet().size && registered.toSet() == (expected.keys - dormant) + unmappedNative) {
                 "Registered mixins must all be covered by the runtime refmap contract: $registered"
             }
             val prefix = namespace.replace('.', '/') + "/"
