@@ -149,6 +149,8 @@ class EpicMaimRendererContractTest {
             assertTrue(calls(method(renderer, "render"), ROOT + "api/model/Armature", "getPoseMatrices"));
             var posed = method(read(jar, "api/client/model/SkinnedMesh"), "drawPosed");
             assertTrue(calls(posed, ROOT + "api/client/model/Mesh$DrawingFunction", "draw"));
+            assertTrue(calls(posed, "org/joml/Vector4f", "mul"), "Callback positions are pose-transformed");
+            assertTrue(calls(posed, "org/joml/Vector3f", "mul"), "Callback normals are lighting-normal-transformed");
             assertTrue(calls(posed, ROOT + "api/model/Armature", "searchJointById"));
             assertTrue(calls(posed, ROOT + "api/animation/Joint", "getToOrigin"));
             var events = method(read(jar, "client/events/engine/RenderEngine$Events"), "renderLivingEvent");
@@ -171,6 +173,8 @@ class EpicMaimRendererContractTest {
         assertTrue(animated.contains("player.isInvisible() || player.isSpectator()"));
         assertTrue(animated.contains("ClientRevivalState.count(player.getUUID(), region, type) <= 0"));
         assertTrue(animated.contains("renderer.getMeshProvider(patch).get()"));
+        assertTrue(animated.contains("new MaimSurfaceOffset(new org.joml.Matrix3f(pose.last().pose()), pose.last().normal())"));
+        assertFalse(animated.contains("x + nx * offset"), "GUI lighting normals must not displace reflected geometry");
         assertTrue(animated.contains("WearableItemLayer.getCachedModel(armor)"));
         assertTrue(animated.contains("patch.getArmature(), poses"));
         assertTrue(animated.contains("mesh.affectingJointIndices()[position]"));

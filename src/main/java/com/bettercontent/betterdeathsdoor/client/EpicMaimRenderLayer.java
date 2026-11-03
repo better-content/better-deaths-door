@@ -52,15 +52,18 @@ final class EpicMaimRenderLayer extends PatchedLayer<AbstractClientPlayer,
         }
     }
 
-    // Offset along the *posed* surface normal. CPU drawPosed is intentional: compute draw
-    // bypasses custom DrawingFunction. Native triangulated buffers still own the geometry.
-    private static final Mesh.DrawingFunction MARK = (out, x, y, z, nx, ny, nz,
-            light, r, g, b, a, u, v, overlay) -> {
-        float length = (float)Math.sqrt(nx * nx + ny * ny + nz * nz);
-        float offset = length > 0 ? .002f / length : 0;
-        out.vertex(x + nx * offset, y + ny * offset, z + nz * offset,
-                r, g, b, a, u, v, overlay, light, nx, ny, nz);
-    };
+    // CPU drawPosed supplies already-transformed positions/lighting normals.
+    // Native GUI reflection is position-only: recover the geometric normal
+    // before adding model-space clearance. Compute draw bypasses this callback.
+    private static Mesh.DrawingFunction mark(PoseStack pose) {
+        var clearance = new MaimSurfaceOffset(new org.joml.Matrix3f(pose.last().pose()), pose.last().normal());
+        var offset = new org.joml.Vector3f();
+        return (out, x, y, z, nx, ny, nz, light, r, g, b, a, u, v, overlay) -> {
+            clearance.offset(nx, ny, nz, offset);
+            out.vertex(x + offset.x, y + offset.y, z + offset.z,
+                    r, g, b, a, u, v, overlay, light, nx, ny, nz);
+        };
+    }
 
     @Override
     protected void renderLayer(AbstractClientPlayerPatch<AbstractClientPlayer> patch,
@@ -69,15 +72,17 @@ final class EpicMaimRenderLayer extends PatchedLayer<AbstractClientPlayer,
             float bob, float yRot, float xRot, float partialTick) {
         if (player.isInvisible() || player.isSpectator()) return;
         HumanoidMesh skin = renderer.getMeshProvider(patch).get(); // ALEX or BIPED
+        Mesh.DrawingFunction mark = null;
         for (Region region : Region.values()) {
             for (MaimType type : MaimType.values()) {
                 if (ClientRevivalState.count(player.getUUID(), region, type) <= 0) continue;
                 String base = MaimSurface.part(region);
                 // Respect native visibility (e.g. a hidden body part), including outer skin.
                 if (!skin.hasPart(base) || skin.getPart(base).isHidden()) continue;
+                if (mark == null) mark = mark(pose);
                 String outer = MaimSurface.outerPart(region);
                 String surface = skin.hasPart(outer) && !skin.getPart(outer).isHidden() ? outer : base;
-                draw(skin, surface, region, surface.equals(outer), patch, type, pose, buffers, light, poses);
+                draw(skin, surface, region, surface.equals(outer), patch, type, pose, buffers, light, poses, mark);
                 for (EquipmentSlot slot : armorSlots(region)) {
                     if (!(player.getItemBySlot(slot).getItem() instanceof ArmorItem armor)
                             || armor.getEquipmentSlot() != slot) continue;
@@ -85,7 +90,7 @@ final class EpicMaimRenderLayer extends PatchedLayer<AbstractClientPlayer,
                     // custom armor, rather than placing skin-sized cubes beneath the armor.
                     SkinnedMesh mesh = WearableItemLayer.getCachedModel(armor);
                     if (mesh == null) mesh = skin.getHumanoidArmorModel(slot).get();
-                    drawArmor(mesh, region, patch, type, pose, buffers, light, poses);
+                    drawArmor(mesh, region, patch, type, pose, buffers, light, poses, mark);
                 }
             }
         }
@@ -93,7 +98,8 @@ final class EpicMaimRenderLayer extends PatchedLayer<AbstractClientPlayer,
 
     private static void drawArmor(SkinnedMesh mesh, Region region,
             AbstractClientPlayerPatch<AbstractClientPlayer> patch, MaimType type,
-            PoseStack pose, MultiBufferSource buffers, int light, OpenMatrix4f[] poses) {
+            PoseStack pose, MultiBufferSource buffers, int light, OpenMatrix4f[] poses,
+            Mesh.DrawingFunction mark) {
         // Native leggings/boots use a single "noGroups" part. Partition complete
         // triangles by their native skinning weights, not part-name/left-right guesses.
         // The same path also covers baked/custom armor with arbitrary part names.
@@ -120,7 +126,7 @@ final class EpicMaimRenderLayer extends PatchedLayer<AbstractClientPlayer,
         int[] vertex = {0};
         Mesh.DrawingFunction markRegion = (out, x, y, z, nx, ny, nz,
                 packedLight, r, g, b, a, u, v, overlay) -> {
-            if (selected.get(vertex[0]++)) MARK.draw(out, x, y, z, nx, ny, nz,
+            if (selected.get(vertex[0]++)) mark.draw(out, x, y, z, nx, ny, nz,
                     packedLight, r, g, b, a, MaimSurface.armorU(region, u), MaimSurface.armorV(v), overlay);
         };
         mesh.drawPosed(pose, buffers.getBuffer(EpicFightRenderTypes.getTriangulated(
@@ -138,7 +144,8 @@ final class EpicMaimRenderLayer extends PatchedLayer<AbstractClientPlayer,
 
     private static void draw(SkinnedMesh mesh, String surface, Region region, boolean outer,
             AbstractClientPlayerPatch<AbstractClientPlayer> patch, MaimType type,
-            PoseStack pose, MultiBufferSource buffers, int light, OpenMatrix4f[] poses) {
+            PoseStack pose, MultiBufferSource buffers, int light, OpenMatrix4f[] poses,
+            Mesh.DrawingFunction mark) {
         // Mesh assets are shared with native rendering. Never initialize/reset them here;
         // save/restore every visibility bit, even if drawing throws.
         Map<MeshPart, Boolean> hidden = new IdentityHashMap<>();
@@ -147,7 +154,7 @@ final class EpicMaimRenderLayer extends PatchedLayer<AbstractClientPlayer,
             mesh.getAllParts().forEach(part -> part.setHidden(true));
             mesh.getPart(surface).setHidden(false);
             Mesh.DrawingFunction mappedMark = (out, x, y, z, nx, ny, nz,
-                    packedLight, r, g, b, a, u, v, overlay) -> MARK.draw(
+                    packedLight, r, g, b, a, u, v, overlay) -> mark.draw(
                     out, x, y, z, nx, ny, nz, packedLight, r, g, b, a,
                     MaimSurface.skinU(region, u, outer), MaimSurface.skinV(region, v, outer), overlay);
             mesh.drawPosed(pose, buffers.getBuffer(EpicFightRenderTypes.getTriangulated(
