@@ -13,35 +13,46 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
-      BC_CUSTOM_MOD_JAR_DIR: ${{ github.workspace }}/build/ci-provider-jars
+      BC_CI_PACK_REF: ${{ vars.BC_CI_PACK_REF }}
     steps:
+      - name: Require immutable provider baseline
+        shell: bash
+        run: '[[ "$BC_CI_PACK_REF" =~ ^[0-9a-f]{40}$ ]] || { echo "Set BC_CI_PACK_REF to a reviewed full pack commit"; exit 1; }'
       - uses: actions/checkout@v4
+        with:
+          path: mod_source/better-deaths-door
+      - name: Check out pinned pack inputs
+        uses: actions/checkout@v4
+        with:
+          repository: better-content/better-content-modpack
+          ref: ${{ env.BC_CI_PACK_REF }}
+          path: better-content-modpack
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
       - uses: gradle/actions/setup-gradle@v4
-      - name: Check out pinned HUD API provider
-        uses: actions/checkout@v4
-        with:
-          repository: better-content/better-survival-hud
-          ref: d3822667f74883052f1521c2c03ec86d1c26311f
-          path: build/ci-hud-provider
-      - name: Stage pinned HUD API provider
-        run: |
-          ./build/ci-hud-provider/gradlew -p build/ci-hud-provider --no-daemon stageRuntimeJar
-          mkdir -p "$BC_CUSTOM_MOD_JAR_DIR"
-          cp build/ci-hud-provider/build/libs/better-survival-hud-1.0.0.jar "$BC_CUSTOM_MOD_JAR_DIR/"
+      - name: Prepare verified provider JARs
+        run: >-
+          python3 better-content-modpack/.github/scripts/prepare-native-ci-inputs.py
+          --pack-root better-content-modpack --repository better-deaths-door
+          --source-root mod_source/better-deaths-door --output native-ci
       - name: Verify repository
-        run: ./gradlew --no-daemon verifyFull
+        working-directory: mod_source/better-deaths-door
+        run: ./gradlew --no-daemon --max-workers=2 --no-build-cache verifyFull
       - name: Preserve verification evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: repository-verification
           path: |
-            build/reports/
-            build/test-results/
-            build/ci-provider-jars/providers.json
+            mod_source/better-deaths-door/build/reports/
+            mod_source/better-deaths-door/build/test-results/
+            mod_source/better-deaths-door/run-gametest/**/logs/
+            native-ci/receipt.json
+            native-ci/providers/providers.json
           if-no-files-found: ignore
           retention-days: 14
