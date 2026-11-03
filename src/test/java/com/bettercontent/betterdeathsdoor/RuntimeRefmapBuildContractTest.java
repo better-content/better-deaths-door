@@ -23,7 +23,14 @@ final class RuntimeRefmapBuildContractTest {
         String stage = build.split("val stageRuntimeJar by", 2)[1].split("// Independently", 2)[0];
         assertTrue(gate.contains("reobfJarJar/output.jar"));
         assertTrue(gate.contains("config[\"refmap\"] == \"better_deaths_door.refmap.json\""));
-        assertTrue(gate.contains("registered.toSet() == expected.keys + unmappedNative"));
+        String mixinConfig = Files.readString(Path.of("src/main/resources/better_deaths_door.mixins.json"));
+        assertTrue(gate.contains("val dormant = setOf(\"HealthDataItemCommitMixin\", \"SynchedEntityDataCommitMixin\", \"FoodDataRawAccess\")"));
+        assertTrue(gate.contains("registered.size == registered.toSet().size"));
+        assertTrue(gate.contains("registered.toSet() == (expected.keys - dormant) + unmappedNative"));
+        for (String dormant : new String[] {"HealthDataItemCommitMixin", "SynchedEntityDataCommitMixin", "FoodDataRawAccess"}) {
+            assertTrue(gate.contains("\"" + dormant + "\" to mapOf("), dormant + " must remain in expected refmap coverage");
+            assertFalse(mixinConfig.contains("\"" + dormant + "\""), dormant + " must remain unregistered");
+        }
         assertTrue(gate.contains("types.keys == expected.keys.map"));
         assertTrue(gate.contains("mappings.keys == selectors.keys"));
         assertTrue(gate.contains("data[\"searge\"]"));
