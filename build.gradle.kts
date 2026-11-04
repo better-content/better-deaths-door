@@ -99,8 +99,8 @@ require(providerDirectory == null || providerDirectory.isNotBlank()) { "BC_CUSTO
 val survivalHudJar = if (providerDirectory == null) file("../better-survival-hud/build/libs/better-survival-hud-1.0.0.jar")
     else file(providerDirectory).resolve("better-survival-hud-1.0.0.jar")
 require(survivalHudJar.isFile) { "Missing provider $survivalHudJar; stage better-survival-hud or set BC_CUSTOM_MOD_JAR_DIR" }
-val noticeJar = if (providerDirectory == null) file("../better-gameplay-notices/build/libs/better-gameplay-notices-1.0.0.jar")
-    else file(providerDirectory).resolve("better-gameplay-notices-1.0.0.jar")
+val noticeJar = if (providerDirectory == null) file("../better-gameplay-notices/build/libs/better-gameplay-notices-1.0.1.jar")
+    else file(providerDirectory).resolve("better-gameplay-notices-1.0.1.jar")
 require(noticeJar.isFile) { "Missing provider $noticeJar" }
 
 repositories {
@@ -128,7 +128,7 @@ dependencies {
     compileOnly(files(survivalHudJar))
     compileOnly(files(noticeJar))
     add(injuryVisual.runtimeOnlyConfigurationName,
-        fg.deobf("bettercontent.notices:better-gameplay-notices:1.0.0"))
+        fg.deobf("bettercontent.notices:better-gameplay-notices:1.0.1"))
     annotationProcessor("org.spongepowered:mixin:0.8.5:processor")
     compileOnly(annotationProcessor("io.github.llamalad7:mixinextras-common:0.5.4")!!)
     val extras = implementation(jarJar("io.github.llamalad7:mixinextras-forge:[0.5.4,0.6.0)")!!)!!
