@@ -35,15 +35,29 @@ public final class DeathRecapOverlay {
     private static final DeathPresentationSession SESSION = new DeathPresentationSession(Util::getMillis);
     private static Screen hintScreen;
     private static int hintHeight, scroll, causeLines = 1;
-    private static Button detailsButton;
+    private static Button detailsButton, scoutButton, nativeRespawn;
+    private static boolean respawnReadyBeforePending;
+    private static ScoutDeathAction scoutAction;
     private static LifeRecap frozen;
     private DeathRecapOverlay() {}
+
+    /** Registered only by an installed server-authoritative scout companion. */
+    public static void registerScoutAction(ScoutDeathAction action) { scoutAction = java.util.Objects.requireNonNull(action); }
+    private static ScoutDeathAction.State scoutState(Screen screen) {
+        if (!(screen instanceof DeathScreen death) || scoutAction == null || nativeRespawn == null)
+            return ScoutDeathAction.State.hidden();
+        var mc = Minecraft.getInstance();
+        if (mc.player == null || !mc.player.isDeadOrDying() || mc.level == null
+                || mc.level.getLevelData().isHardcore()) return ScoutDeathAction.State.hidden();
+        return scoutAction.state(death);
+    }
 
     private static boolean reducedMotion() { return InjuryClientConfig.REDUCED_MOTION.get(); }
     private static int cardCount() { return frozen == null ? 3 : frozen.cards().size(); }
     private static DeathRecapLayout layout(Screen screen) {
         return DeathRecapLayout.fit(screen.width, screen.height, causeLines, cardCount(),
-                hintScreen == screen ? hintHeight : 0, SESSION.owns(screen) && SESSION.details());
+                hintScreen == screen ? hintHeight : 0, SESSION.owns(screen) && SESSION.details(),
+                scoutState(screen).available());
     }
     /** Discovery Guides supplies measured copy; its position and clipping remain owned here. */
     public static Bounds reserveHint(Screen screen, int measuredHeight) {
@@ -52,7 +66,8 @@ public final class DeathRecapOverlay {
         return new Bounds(l.x(), l.contentTop() + l.hintTop() - l.clampScroll(scroll), l.width(), hintHeight);
     }
     public static Bounds reservedBounds(int width, int height) {
-        var l = DeathRecapLayout.fit(width, height, causeLines, cardCount(), hintHeight, SESSION.details());
+        var l = DeathRecapLayout.fit(width, height, causeLines, cardCount(), hintHeight, SESSION.details(),
+                hintScreen != null && scoutState(hintScreen).available());
         return new Bounds(l.x(), l.contentTop(), l.width(), l.viewportHeight());
     }
     public static boolean hintVisible(Screen screen) {
@@ -73,7 +88,8 @@ public final class DeathRecapOverlay {
     }
     public static void reset() {
         SESSION.clear(); frozen = null; hintScreen = null; hintHeight = 0;
-        scroll = 0; causeLines = 1; detailsButton = null;
+        scroll = 0; causeLines = 1; detailsButton = null; scoutButton = null; nativeRespawn = null;
+        respawnReadyBeforePending = false;
     }
 
     @SubscribeEvent
@@ -81,24 +97,52 @@ public final class DeathRecapOverlay {
         if (!(event.getScreen() instanceof DeathScreen screen)) return;
         // Reinitialization restores native widgets, but must not restart the death episode clock.
         var nativeButtons = event.getListenersList().stream().filter(Button.class::isInstance).map(Button.class::cast).toList();
-        if (nativeButtons.size() == 2) {
+        var respawnLabel = Component.translatable("deathScreen.respawn").getString();
+        var titleLabel = Component.translatable("deathScreen.titleScreen").getString();
+        var respawn = nativeButtons.stream().filter(b -> b.getMessage().getString().equals(respawnLabel)).findFirst();
+        var title = nativeButtons.stream().filter(b -> b.getMessage().getString().equals(titleLabel)).findFirst();
+        nativeRespawn = respawn.orElse(null);
+        if (respawn.isPresent() && title.isPresent() && respawn.get() != title.get()) {
             int width = Math.max(1, Math.min(200, (screen.width - 30) / 2));
-            for (int i = 0; i < 2; i++) {
-                var button = nativeButtons.get(i); button.setWidth(width);
-                button.setX(screen.width / 2 + (i == 0 ? -width - 3 : 3));
-                button.setY(Math.max(0, screen.height - 32));
-            }
+            respawn.get().setWidth(width); respawn.get().setX(screen.width / 2 - width - 3);
+            title.get().setWidth(width); title.get().setX(screen.width / 2 + 3);
+            respawn.get().setY(Math.max(0, screen.height - 32));
+            title.get().setY(Math.max(0, screen.height - 32));
         }
+        var l = layout(screen);
         detailsButton = Button.builder(Component.translatable("screen.better_deaths_door.details"), button -> {
             if (!detailsVisible(screen)) return;
             SESSION.toggleDetails(); scroll = 0; updateDetails(screen);
-        }).bounds(screen.width / 2 - 55, Math.max(0, screen.height - 58), 110, 18).build();
+        }).bounds(screen.width / 2 - 55, l.detailsY(), 110, 18).build();
         detailsButton.visible = detailsVisible(screen); detailsButton.active = detailsButton.visible;
         event.addListener(detailsButton);
+        scoutButton = Button.builder(Component.translatable("screen.better_deaths_door.scout"), button -> {
+            if (nativeRespawn != null && nativeRespawn.active && scoutState(screen).available()
+                    && !scoutState(screen).pending()) scoutAction.request(screen);
+        }).bounds(screen.width / 2 - 78, l.scoutY(), 156, 18).build();
+        scoutButton.visible = scoutState(screen).available(); scoutButton.active = scoutButton.visible;
+        event.addListener(scoutButton);
     }
     @SubscribeEvent
     public static void close(ScreenEvent.Closing event) {
-        if (SESSION.owns(event.getScreen())) reset();
+        if (SESSION.owns(event.getScreen())) {
+            if (scoutAction != null && event.getScreen() instanceof DeathScreen screen) scoutAction.close(screen);
+            reset();
+        }
+    }
+    @SubscribeEvent(priority = EventPriority.HIGHEST)
+    public static void blockRespawnClickWhilePending(ScreenEvent.MouseButtonPressed.Pre event) {
+        if (!(event.getScreen() instanceof DeathScreen screen) || nativeRespawn == null
+                || event.getButton() != 0 || !scoutState(screen).pending()) return;
+        if (event.getMouseX() >= nativeRespawn.getX() && event.getMouseX() < nativeRespawn.getX() + nativeRespawn.getWidth()
+                && event.getMouseY() >= nativeRespawn.getY() && event.getMouseY() < nativeRespawn.getY() + nativeRespawn.getHeight())
+            event.setCanceled(true);
+    }
+    @SubscribeEvent(priority = EventPriority.HIGHEST)
+    public static void blockRespawnKeyWhilePending(ScreenEvent.KeyPressed.Pre event) {
+        if (!(event.getScreen() instanceof DeathScreen screen) || nativeRespawn == null
+                || !scoutState(screen).pending() || screen.getFocused() != nativeRespawn) return;
+        if (event.getKeyCode() == 257 || event.getKeyCode() == 335 || event.getKeyCode() == 32) event.setCanceled(true);
     }
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public static void beforeRender(ScreenEvent.Render.Pre event) {
@@ -107,10 +151,30 @@ public final class DeathRecapOverlay {
     }
     private static void updateDetails(Screen screen) {
         if (detailsButton == null) return;
+        var l = layout(screen);
+        var state = scoutState(screen);
         detailsButton.visible = detailsVisible(screen);
         detailsButton.active = detailsButton.visible;
+        detailsButton.setX(screen.width / 2 - (state.available() && !l.stackedActions() ? 136 : 55));
+        detailsButton.setY(l.detailsY());
         detailsButton.setMessage(Component.translatable(SESSION.details()
                 ? "screen.better_deaths_door.summary" : "screen.better_deaths_door.details"));
+        if (scoutButton != null) {
+            scoutButton.visible = state.available();
+            scoutButton.active = state.available() && !state.pending()
+                    && nativeRespawn != null && nativeRespawn.active;
+            scoutButton.setX(screen.width / 2 + (l.stackedActions() ? -78 : -20));
+            scoutButton.setY(l.scoutY());
+        }
+        if (nativeRespawn != null) {
+            if (state.pending()) {
+                respawnReadyBeforePending |= nativeRespawn.active;
+                nativeRespawn.active = false;
+            } else if (respawnReadyBeforePending) {
+                nativeRespawn.active = true;
+                respawnReadyBeforePending = false;
+            }
+        }
     }
     @SubscribeEvent(priority = EventPriority.LOW)
     public static void render(ScreenEvent.Render.Post event) {
@@ -156,6 +220,9 @@ public final class DeathRecapOverlay {
                     g.fill(l.x() + l.width() - 2, y, l.x() + l.width(), y + height, GOLD);
                 }
             }
+            var scoutError = scoutState(screen).error();
+            if (scoutError != null) text(g, scoutError.getString(), l.x() + 8, l.contentBottom() + 2,
+                    l.width() - 16, 0xFFED9E91);
             drawButtons(screen, event);
             if (cause != null && causeText.size() > causeLines && event.getMouseX() >= l.x()
                     && event.getMouseX() < l.x() + l.width() && event.getMouseY() >= 43
