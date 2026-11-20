@@ -73,7 +73,7 @@ public final class ClientRevivalState {
             }
             case "failed-proc" -> {
                 if (InjuryClientConfig.SOUND.get() && mc.player != null)
-                    mc.player.playSound(SoundEvents.ANVIL_LAND, .3f, .55f);
+                    mc.player.playSound(SoundEvents.ANVIL_LAND, .15f, .55f);
             }
             case "close" -> {
                 if (!(mc.screen instanceof net.minecraft.client.gui.screens.DeathScreen)) mc.setScreen(null);
